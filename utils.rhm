@@ -1,0 +1,36 @@
+#lang rhombus
+
+export:
+  TODO
+  filter
+  ^
+
+macro 'TODO $(msg :: String)':
+  'error("TODO: " +& $msg)'
+
+fun filter(predicate :~ Function.of_arity(1), lst :~ List):
+  match lst
+  | []: []
+  // it would be nice if there was a more ergonomic pattern to use here
+  | List.cons(fst, rst):
+      if predicate(fst)
+      | List.cons(fst, filter(predicate, rst))
+      | filter(predicate, rst)
+
+
+operator base ^ exp:
+  ~stronger_than: * / + - <= >= == >> << and
+  ~associativity: ~right
+                  
+  math.expt(base, exp)
+
+
+module test:
+  check: TODO "foo"
+         ~raises "foo"
+
+  check: filter(fun(_): #true, [1, 2, 3])
+         ~is [1, 2, 3]
+
+  check: filter(fun(n): n mod 2 == 0, [1, 2, 3, 4, 5, 6])
+         ~is [2, 4, 6]

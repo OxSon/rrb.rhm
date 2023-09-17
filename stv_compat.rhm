@@ -1,0 +1,101 @@
+#lang rhombus
+
+export:
+  Vec
+  VEC_WIDTH
+  vec
+  add_vec
+  set_vec
+  copy_vec
+  last_vec
+  
+  mask
+  len
+  ref
+  update
+ 
+
+import rhombus/meta open
+
+import lib("racket/base.rkt") as r:
+  rename:
+    #{stencil-vector-mask} as mask
+    #{stencil-vector-length} as len
+    #{stencil-vector-ref} as ref
+    #{stencil-vector-update} as update
+    
+  expose:
+    mask
+    len
+    ref
+    update
+
+
+annot.macro 'Vec':
+  annot_meta.pack_predicate('r.#{stencil-vector?}')
+
+// stencil vectors have a max size of 28 on 32-bit platforms, but for RRB purposes,
+// we want our max size to be a power of 2
+def VEC_WIDTH:
+  if r.#{stencil-vector-mask-width}() >= 32
+  | 32
+  | 16
+
+
+fun vec(& args) :~ Vec:
+  r.#{stencil-vector}((1 bits.(<<) args.length()) - 1, & args)
+
+fun add_vec(v :: Vec, el) :~ Vec:
+  if len(v) < VEC_WIDTH
+  | update(v, 0, 1 bits.(<<) len(v), el)
+  | error(#'#{vec.add}, "no room in vec")
+
+fun set_vec(v :: Vec, idx :: NonnegInt, el) :~ Vec:
+  update(v, 1 bits.(<<) idx, 1 bits.(<<) idx, el)
+
+fun copy_vec(v :: Vec) :~ Vec:
+  update(v, 0, 0)
+
+fun last_vec(v :: Vec) :~ Vec:
+  if len(v) <= 0
+  | error("no 'last' for empty vector")
+  | ref(v, len(v) - 1)
+
+module test:
+  check: vec(1, 2, 3)
+         ~is r.#{stencil-vector}(7, 1, 2, 3)
+
+  check: add_vec(vec(1, 2, 3), 4)
+         ~is vec(1, 2, 3, 4)
+
+  check: set_vec(vec(1, 2, 3), 1, -1)
+         ~is vec(1, -1, 3)
+
+  let v1 = vec(1, 2, 3)
+  let v2 = copy_vec(v1)
+  check:
+    v1 ~is v2
+    v1 === v2 ~is #false
+
+  check:
+    last_vec(v1)
+    ~is 3
+
+  check:
+    last_vec(vec(vec(0, 1), vec(2, 3)))
+    ~is vec(2, 3)
+
+  check:
+    last_vec(vec())
+    ~raises "empty vector"
+
+  check:
+    1 :: Vec
+    ~raises ""
+
+  check:
+    vec(1, 2, 3) :: Vec
+    ~completes
+    
+
+
