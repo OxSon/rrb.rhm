@@ -6,6 +6,12 @@ import "stv_compat.rhm" open
 export:
   Tree
 
+/* a node in the RRB Tree
+  - a node is balanced if its children 0 through len(children) - 2 each have exactly `m`
+    children where `m` is the branch factor of the containing `Tree`, and leaf nodes
+    are always considered balanced
+  - unbalanced nodes contain a size array `sizes`, balanced nodes do not
+*/
 class Node(children :: Vec, sizes :: Vec || False = #false):
   constructor
   | (): super(vec())
@@ -105,12 +111,74 @@ class Tree(root :: Node,
            branch_factor)
           
                 
-  
   method concat(rhs :: Tree) :~ Tree:
     TODO "concat"
   
   method split(at :: NonnegInt, side :: Any.of(#'left, #'right, #'l, #'r)) :~ Tree:
     TODO "split"
+
+/* helper functions */
+
+fun radix_of(index :: Int, branch_factor, height) :~ Int:
+  if height == 0
+  | index bits.and ((1 bits.(<<) branch_factor) - 1)
+  | (index bits.(>>) (branch_factor * height)) bits.and ((1 bits.(<<) branch_factor) - 1)
+                      
+fun scan_sizes(sizes, target_index, i = 0) :~ Int:
+  if ref(sizes, i) <= target_index
+  | scan_sizes(sizes, target_index, i + 1)
+  | i
+
+// calculate next branch to take and subindex of `index` along that path
+fun step(node :: Node, index, branch_factor, depth) :~ (NonnegInt, NonnegInt):
+  def branch = scan_sizes(node.sizes, index, radix_of(index, branch_factor, depth))
+  values(branch,
+         if branch == 0
+         | index
+         | index - ref(node.sizes, branch - 1))
+
+// count number of nodes that either have room themselves for another element and/or branch,
+// or one of their right-most descendants has room
+fun copyable_count(node, width, height):
+  def (_, count):
+    for values(n = node, count = 0):
+      each i: 0 .. height + 1
+      def l = len(n.children)
+      values(if l == 0
+             | n
+             | n.get(l - 1),
+             if l < width
+             | i + 1
+             | count)
+  count
+
+
+
+//  using `count` returned from `copyable_count`, copy `count` nodes along right-most path of `n`,
+// then insert new element in leaf node or new branch if `count` << `height`
+fun build(n, count, height, el):
+  if count < 2
+  | if height == 0
+    | Node(add_vec(n.children, el))
+    | Node(add_vec(n.children,
+                   new_branch(el, height - 1)))
+  | Node(set_vec(n.children,
+                 len(n.children) - 1,
+                 build(n.get(len(n.children) - 1),
+                       count - 1,
+                       height - 1,
+                       el)),
+         n.sizes && set_vec(n.sizes,
+                            len(n.sizes) - 1,
+                            ref(n.sizes, len(n.sizes) - 1) + 1))
+
+// create a branch of height `height` terminating in a unary leaf node containing `el`
+fun new_branch(el, height):
+  if height == 0
+  | leaf(el)
+  | Node(vec(new_branch(el, height - 1)))
+
+
 
 module test:
   check: Tree(leaf(), 0, 0).add(0)
@@ -296,61 +364,6 @@ module test:
            1).get(4)
          ~is 4
 
-
-fun radix_of(index :: Int, branch_factor, height) :~ Int:
-  if height == 0
-  | index bits.and ((1 bits.(<<) branch_factor) - 1)
-  | (index bits.(>>) (branch_factor * height)) bits.and ((1 bits.(<<) branch_factor) - 1)
-                      
-fun scan_sizes(sizes, target_index, i = 0) :~ Int:
-  if ref(sizes, i) <= target_index
-  | scan_sizes(sizes, target_index, i + 1)
-  | i
-
-// calculate next branch to take and subindex of `index` along that path
-fun step(node :: Node, index, branch_factor, depth) :~ (NonnegInt, NonnegInt):
-  def branch = scan_sizes(node.sizes, index, radix_of(index, branch_factor, depth))
-  values(branch,
-         if branch == 0
-         | index
-         | index - ref(node.sizes, branch - 1))
-
-// return (# of copyable nodes, index in last copyable node which can be inserted-into)
-// where a copyable node is one that has room for another element (or branch)
-fun copyable_count(node, width, height):
-  def (_, count):
-    for values(n = node, count = 0):
-      each i: 0 .. height + 1
-      def l = len(n.children)
-      values(if l == 0
-             | n
-             | n.get(l - 1),
-             if l < width
-             | i + 1
-             | count)
-  count
-
-fun new_branch(el, height):
-  if height == 0
-  | leaf(el)
-  | Node(vec(new_branch(el, height - 1)))
-
-
-fun build(n, count, height, el):
-  if count < 2
-  | if height == 0
-    | Node(add_vec(n.children, el))
-    | Node(add_vec(n.children,
-                   new_branch(el, height - 1)))
-  | Node(set_vec(n.children,
-                 len(n.children) - 1,
-                 build(n.get(len(n.children) - 1),
-                       count - 1,
-                       height - 1,
-                       el)),
-         n.sizes && set_vec(n.sizes,
-                            len(n.sizes) - 1,
-                            ref(n.sizes, len(n.sizes) - 1) + 1))
 
 module test:
   check: build(leaf(0, 1, 2), 1, 0, -1)
