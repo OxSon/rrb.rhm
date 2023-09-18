@@ -1,6 +1,6 @@
 #lang rhombus
 
-import "utils.rkt" open
+import "utils.rhm" open
 import "stv_compat.rhm" open
 
 export:
