@@ -7,9 +7,11 @@ export:
   Tree
 
 /* a node in the RRB Tree
-  - a node is balanced if its children 0 through len(children) - 2 each have exactly `m`
-    children where `m` is the branch factor of the containing `Tree`, and leaf nodes
-    are always considered balanced
+  - a node is fully dense if it has exactly `m` children where `m` is the branching factor of the overall Tree
+    and each child is also fully dense
+  - a node is leftwise dense if its first `n - 1` children, where `n` is its total number of children,
+    are fully dense, and its `n`th child is leftwise-dense or fully dense. `n` is allowed to be < `m`
+  - a node is balanced if it is leftwise dense or fully dense
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
 class Node(children :: Vec, sizes :: Vec || False = #false):
