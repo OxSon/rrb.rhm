@@ -72,30 +72,28 @@ class Tree(root :: Node,
 
   // get the element at `index`
   method get(index :: Int):
-    fun _get(node, index, depth):
+    recur get(node = root, index = index, depth = height):
       if node.balanced
       | for values(n = node):
           each i: 0 .. depth + 1
           n.get(radix_of(index, branch_factor, depth - i))
       | def (branch_index, subindex) = step(node, index, branch_factor, depth)
-        _get(node.get(branch_index), subindex, depth - 1)
-
-    _get(root, index, height)
+        get(node.get(branch_index), subindex, depth - 1)
 
   // set the slot at `index` to `el`
   method set(index :: Int, el) :~ Tree:
-    fun _set(node, index, el, depth):
+    def new_node = recur set(node = root, index = index, el = el, depth = height):
       cond
       | depth == 0:
           node.set(radix_of(index, branch_factor, depth), el)
       | node.balanced:
           def branch_index = radix_of(index, branch_factor, depth)
-          node.set(branch_index, _set(node.get(branch_index), index, el, depth - 1))
+          node.set(branch_index, set(node.get(branch_index), index, el, depth - 1))
       | ~else:
           def (branch_index, subindex) = step(node, index, branch_factor, depth)
-          node.set(branch_index, _set(node.get(branch_index), subindex, el, depth - 1))
+          node.set(branch_index, set(node.get(branch_index), subindex, el, depth - 1))
 
-    Tree(_set(root, index, el, height), size, height, branch_factor)
+    Tree(new_node,  size,  height,  branch_factor)
 
 
   // add `el` to end of vector
