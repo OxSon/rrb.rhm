@@ -25,6 +25,9 @@ class Node(children :: Vec, sizes :: Vec || False = #false):
 
   method set(index, el) :~ Node:
     Node(set_vec(children, index, el), sizes)
+
+  property size:
+    len(children)
     
 fun leaf(args, ...) :~ Node:
   Node(vec(args, ...))
@@ -48,7 +51,8 @@ module test:
   check: leaf(1, 2, 3)
          ~is Node(vec(1, 2, 3))
 
-
+// TODO: allowing an arbitrary branch factor is nice for testing, but is probably unnecessary in the final implementation,
+// and complicates implementation slightly in some places
 class Tree(root :: Node,
            size :: NonnegInt = 0,
            height :: NonnegInt = 0,
@@ -143,7 +147,7 @@ fun copyable_count(node, width, height):
   def (_, count):
     for values(n = node, count = 0):
       each i: 0 .. height + 1
-      def l = len(n.children)
+      def l = n.size
       values(if l == 0
              | n
              | n.get(l - 1),
@@ -163,8 +167,8 @@ fun build(n, count, height, el):
     | Node(add_vec(n.children,
                    new_branch(el, height - 1)))
   | Node(set_vec(n.children,
-                 len(n.children) - 1,
-                 build(n.get(len(n.children) - 1),
+                 n.size - 1,
+                 build(n.get(n.size - 1),
                        count - 1,
                        height - 1,
                        el)),
