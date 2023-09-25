@@ -8,6 +8,11 @@ export:
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
 
+macro 'assert($predicate)':
+    'if $predicate
+     | values()
+     | error("assertion failed: " +& '$predicate')'
+
 fun filter(predicate :~ Function.of_arity(1), lst :~ List):
   match lst
   | []: []
@@ -28,6 +33,18 @@ operator base ^ exp:
 module test:
   check: TODO "foo"
          ~raises "foo"
+
+  check: assert(1 == 2)
+         ~raises "assertion failed: " +& '1 == 2'
+
+  check: assert((fun (x): x == 2)(1))
+         ~raises "assertion failed: " +& '(fun (x): x == 2)(1)'
+
+  check: assert(9 mod 3 == 1)
+         ~raises "assertion failed: 9 mod 3 == 1"
+
+  check: assert(filter(fun (x): x mod 2 == 0, [2, 4, 6, 8]))
+         ~completes
 
   check: filter(fun(_): #true, [1, 2, 3])
          ~is [1, 2, 3]
