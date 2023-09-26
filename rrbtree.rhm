@@ -12,12 +12,8 @@ export:
     are always considered balanced
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
-class Node(children :: Vec, sizes :: Vec || False = #false):
+class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
   private implements Equatable
-  
-  constructor
-  | (): super(vec())
-  | (args, ...): super(args, ...)
  
   property balanced:
     !sizes
@@ -136,17 +132,12 @@ module test:
 
 // TODO: allowing an arbitrary branch factor is nice for testing, but is probably unnecessary in the final implementation,
 // and complicates implementation slightly in some places
-class Tree(root :: Node,
+class Tree(root :: Node = Node(),
            size :: NonnegInt = 0,
            height :: NonnegInt = 0,
            branch_factor = bits.length(VEC_WIDTH) - 1,
            private max_width = 1 bits.(<<) branch_factor):
   private implements Equatable
-  
-  constructor
-  | (): super(Node())
-  | (~bf: bf): super(Node(), 0, 0, bf)
-  | (args, ...): super(args, ...)
 
   property balanced:
     root.balanced
