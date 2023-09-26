@@ -13,6 +13,8 @@ export:
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
 class Node(children :: Vec, sizes :: Vec || False = #false):
+  private implements Equatable
+  
   constructor
   | (): super(vec())
   | (args, ...): super(args, ...)
@@ -20,14 +22,46 @@ class Node(children :: Vec, sizes :: Vec || False = #false):
   property balanced:
     !sizes
     
+  property size:
+    len(children)
+
+  property first:
+    first_vec(children)
+
+  property last:
+    last_vec(children)
+
+  property init:
+    Node(init_vec(children),
+         sizes && init_vec(sizes))
+
+  property tail:
+    Node(tail_vec(children),
+         sizes && (for values(v = vec()):
+                     def shrink_by = ref(sizes, 0)
+                     each i: 1..len(sizes)
+                     add_vec(v, ref(sizes, i) - shrink_by)))
+
+  private override equals(rhs :: Node, recur):
+    len(children) == len(rhs.children)
+      && (for values(eq = #true):
+            each i: 0..len(children)
+            break_when !eq
+            recur(ref(children, i), ref(rhs.children, i)))
+
+  private override hash_code(recur):
+    if len(children) == 0
+    | 0 // TODO is this an ok hash code?
+    | for values(hc = recur(ref(children, 0))):
+        each i: 1..len(children)
+        Equatable.hash_code_combine(hc, recur(ref(children, i)))
+    
   method get(index):
     ref(children, index)
 
   method set(index, el) :~ Node:
     Node(set_vec(children, index, el), sizes)
 
-  property size:
-    len(children)
     
 fun leaf(args, ...) :~ Node:
   Node(vec(args, ...))
@@ -36,6 +70,15 @@ module test:
   check:
     Node(vec(1, 2, 3)).get(2)
     ~is 3
+
+  check:
+    Node(vec(1, 2, 3))
+    ~is Node(vec(1, 2, 3))
+
+  check:
+    Node(vec(leaf(1), leaf(2, 3)),
+         vec(1, 3))
+    ~is Node(vec(leaf(1), leaf(2, 3)))
 
   let t1 = Node(vec(Node(vec(0, 1)), Node(vec(2, 3))), vec(2, 4))
   let t2 = t1.set(0, t1.get(0).set(0, -1))
@@ -51,6 +94,46 @@ module test:
   check: leaf(1, 2, 3)
          ~is Node(vec(1, 2, 3))
 
+  check: Node(vec(leaf(1, 2), leaf(3))).init
+         ~is Node(vec(leaf(1, 2)))
+  check: leaf(1, 2, 3, 4).tail
+         ~is Node(tail_vec(vec(1, 2, 3, 4))) // leaf(2, 3, 4)
+  check: leaf(1, 2, 3, 4).init
+         ~is Node(init_vec(vec(1, 2, 3, 4))) // leaf(1, 2, 3)
+
+  check: Node(vec(
+                leaf(1, 2, 3),
+                leaf(4, 5, 6))).init.last
+         ~is leaf(1, 2, 3)
+
+  check: Node(vec(
+                leaf(1, 2, 3),
+                leaf(4, 5, 6, 7))).tail.first
+         ~is leaf(4, 5, 6, 7)
+
+  check: Node(vec(
+                leaf(1),
+                leaf(2, 3)),
+              vec(1, 3)).tail
+         ~is Node(vec(leaf(2, 3)))
+
+  check: Node(vec(
+                leaf(1, 2, 3, 4),
+                leaf(4, 5, 6),
+                leaf(7, 8, 9, 10)),
+              vec(4, 7, 11)).tail
+         ~is Node(vec(leaf(4, 5, 6),
+                      leaf(7, 8, 9, 10)),
+                  vec(3, 7))
+
+  check: Node(vec(leaf(1),
+                  leaf(2, 3),
+                  leaf(4, 5)),
+              vec(1, 3, 5)).init
+         ~is Node(vec(leaf(1),
+                      leaf(2, 3)),
+                  vec(1, 3))
+
 // TODO: allowing an arbitrary branch factor is nice for testing, but is probably unnecessary in the final implementation,
 // and complicates implementation slightly in some places
 class Tree(root :: Node,
@@ -58,6 +141,7 @@ class Tree(root :: Node,
            height :: NonnegInt = 0,
            branch_factor = bits.length(VEC_WIDTH) - 1,
            private max_width = 1 bits.(<<) branch_factor):
+  private implements Equatable
   
   constructor
   | (): super(Node())
@@ -69,6 +153,12 @@ class Tree(root :: Node,
     
   property width:
     max_width
+
+  private override equals(rhs :: Tree, recur):
+    size == rhs.size && recur(root, rhs.root)
+
+  private override hash_code(recur):
+    recur(root)
 
   // get the element at `index`
   method get(index :: Int):
@@ -118,6 +208,14 @@ class Tree(root :: Node,
   
   method split(at :: NonnegInt, side :: Any.of(#'left, #'right, #'l, #'r)) :~ Tree:
     TODO "split"
+
+module test:
+  check: Tree()
+         ~is Tree()
+
+  check: Tree(leaf(1, 2, 3), 3, 0, 4)
+         ~is Tree(leaf(1, 2, 3), 3, 0, 32)
+
 
 /* helper functions */
 
