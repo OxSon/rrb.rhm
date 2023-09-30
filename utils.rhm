@@ -2,26 +2,104 @@
 
 export:
   TODO
-  filter
   ^
+  Vec
+  vec
+  copy_vec
+  add_vec
+  set_vec
+
+/* Array utilities for imitating immutable arrays */
+
+import rhombus/meta open
+import lib("racket/base.rkt") as r
+import lib("racket/vector.rkt") as v
+  
+annot.macro 'Vec':
+  annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
+
+
+fun vec(args, ...) :: Vec:
+  r.#{vector-immutable}(args, ...)
+
+module test:
+  check: vec(1, 2, 3) :: Vec
+         ~is r.#{vector-immutable}(1, 2, 3)
+         
+  check:
+    1 :: Vec
+    ~raises ""
+
+  check:
+    Array(1, 2, 3) :: Vec
+    ~raises ""
+
+  check: vec(1, 2, 3)[0] := -1
+         ~raises ""
+
+fun copy_vec(v :: Vec) :: Vec:
+  r.#{vector->immutable-vector}(Array.copy(v))
+
+module test:
+  let v1 = vec(1, 2, 3)
+  let v2 = copy_vec(v1)
+  check:
+    v1 ~is v2
+    v1 === v2 ~is #false
+    
+module test:
+  let v = vec(1, 2, 3)
+  let v2 = copy_vec(v)
+
+  check: v2[0] := -1
+         ~raises ""
+
+  check: v
+         ~is v2
+
+  check: v === v2
+         ~is #false
+
+
+fun add_vec(v :: Vec, el) :: Vec:
+  def ret = Array.make(v.length() + 1)
+  Array.copy_from(ret, 0, v)
+  ret[v.length()] := el
+  r.#{vector->immutable-vector}(ret)
+
+
+module test:
+  check: add_vec(vec(1, 2, 3), 4)
+         ~is vec(1, 2, 3, 4)
+
+fun set_vec(v :: Vec, idx :: NonnegInt, el) :: Vec:
+  def ret = Array.copy(v)
+  ret[idx] := el
+  r.#{vector->immutable-vector}(ret)
+
+
+module test:
+  check: set_vec(vec(1, 2, 3), 1, -1)
+         ~is vec(1, -1, 3)
+
+fun append_vec(vec0, ...) :: Vec:
+  r.#{vector->immutable-vector}(v.#{vector-append}(vec0, ...))
+
+module test:
+  check: append_vec(vec(1, 2, 3), vec(4, 5))
+         ~is vec(1, 2, 3, 4, 5)
+
+  check: append_vec(vec(#'a, #'b, #'c),
+                    vec(1, 2, 3),
+                    vec("the industrial revolution and its consequences..."))
+         ~is vec(#'a, #'b, #'c,
+                 1, 2, 3,
+                 "the industrial revolution and its consequences...")
+
+/* convenience utilities */
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
-
-macro 'assert($predicate)':
-    'if $predicate
-     | values()
-     | error("assertion failed: " +& '$predicate')'
-
-fun filter(predicate :~ Function.of_arity(1), lst :~ List):
-  match lst
-  | []: []
-  // it would be nice if there was a more ergonomic pattern to use here
-  | List.cons(fst, rst):
-      if predicate(fst)
-      | List.cons(fst, filter(predicate, rst))
-      | filter(predicate, rst)
-
 
 operator base ^ exp:
   ~stronger_than: * / + - <= >= == >> << and
@@ -34,20 +112,8 @@ module test:
   check: TODO "foo"
          ~raises "foo"
 
-  check: assert(1 == 2)
-         ~raises "assertion failed: " +& '1 == 2'
+  check: 2 ^ 3
+         ~is 8
 
-  check: assert((fun (x): x == 2)(1))
-         ~raises "assertion failed: " +& '(fun (x): x == 2)(1)'
-
-  check: assert(9 mod 3 == 1)
-         ~raises "assertion failed: 9 mod 3 == 1"
-
-  check: assert(filter(fun (x): x mod 2 == 0, [2, 4, 6, 8]))
-         ~completes
-
-  check: filter(fun(_): #true, [1, 2, 3])
-         ~is [1, 2, 3]
-
-  check: filter(fun(n): n mod 2 == 0, [1, 2, 3, 4, 5, 6])
-         ~is [2, 4, 6]
+  check: 2 ^ 3 + 1 <= 100 / 10 - 1
+         ~is #true

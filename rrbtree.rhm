@@ -1,7 +1,6 @@
 #lang rhombus
 
 import "utils.rhm" open
-import "stv_compat.rhm" open
 
 export:
   Tree
@@ -19,44 +18,43 @@ class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
     !sizes
     
   property size:
-    len(children)
+    children.length()
 
   property first:
-    first_vec(children)
+    children[0]
 
   property last:
-    last_vec(children)
+    children[children.length() - 1]
 
-  property init:
-    Node(init_vec(children),
-         sizes && init_vec(sizes))
-
-  property tail:
-    Node(tail_vec(children),
-         sizes && (for values(v = vec()):
-                     def shrink_by = ref(sizes, 0)
-                     each i: 1..len(sizes)
-                     add_vec(v, ref(sizes, i) - shrink_by)))
 
   private override equals(rhs :: Node, recur):
-    len(children) == len(rhs.children)
+    children.length() == rhs.children.length()
       && (for values(eq = #true):
-            each i: 0..len(children)
+            each i: 0 .. children.length()
             break_when !eq
-            recur(ref(children, i), ref(rhs.children, i)))
+            recur(children[i], rhs.children[i]))
 
   private override hash_code(recur):
-    if len(children) == 0
+    if children.length() == 0
     | 0
-    | for values(hc = recur(ref(children, 0))):
-        each i: 1..len(children)
-        Equatable.hash_code_combine(hc, recur(ref(children, i)))
+    | for values(hc = children[0]):
+        each i: 1 .. children.length()
+        Equatable.hash_code_combine(hc, recur(children[i]))
     
   method get(index):
-    ref(children, index)
+    children[index]
 
   method set(index, el) :~ Node:
     Node(set_vec(children, index, el), sizes)
+
+module test:
+  check: leaf(1, 2, 3).first
+         ~is 1
+
+  check: Node(vec(leaf(#'a), leaf(#'b, #'c)),
+              vec(1, 3)).last
+         ~is leaf(#'b, #'c)
+         
 
 
 fun concat_subtree(left :: Node,
@@ -117,52 +115,12 @@ module test:
   check: leaf(1, 2, 3)
          ~is Node(vec(1, 2, 3))
 
-  check: Node(vec(leaf(1, 2), leaf(3))).init
-         ~is Node(vec(leaf(1, 2)))
-  check: leaf(1, 2, 3, 4).tail
-         ~is Node(tail_vec(vec(1, 2, 3, 4))) // leaf(2, 3, 4)
-  check: leaf(1, 2, 3, 4).init
-         ~is Node(init_vec(vec(1, 2, 3, 4))) // leaf(1, 2, 3)
-
-  check: Node(vec(
-                leaf(1, 2, 3),
-                leaf(4, 5, 6))).init.last
-         ~is leaf(1, 2, 3)
-
-  check: Node(vec(
-                leaf(1, 2, 3),
-                leaf(4, 5, 6, 7))).tail.first
-         ~is leaf(4, 5, 6, 7)
-
-  check: Node(vec(
-                leaf(1),
-                leaf(2, 3)),
-              vec(1, 3)).tail
-         ~is Node(vec(leaf(2, 3)))
-
-  check: Node(vec(
-                leaf(1, 2, 3, 4),
-                leaf(4, 5, 6),
-                leaf(7, 8, 9, 10)),
-              vec(4, 7, 11)).tail
-         ~is Node(vec(leaf(4, 5, 6),
-                      leaf(7, 8, 9, 10)),
-                  vec(3, 7))
-
-  check: Node(vec(leaf(1),
-                  leaf(2, 3),
-                  leaf(4, 5)),
-              vec(1, 3, 5)).init
-         ~is Node(vec(leaf(1),
-                      leaf(2, 3)),
-                  vec(1, 3))
-
 // TODO: allowing an arbitrary branch factor is nice for testing, but is probably unnecessary in the final implementation,
 // and complicates implementation slightly in some places
 class Tree(root :: Node = Node(),
            size :: NonnegInt = 0,
-           height :: NonnegInt = 0,
-           branch_factor = bits.length(VEC_WIDTH) - 1,
+           height :: NonnegInt = 0, // TODO store `shift` instead
+           branch_factor = 5,
            private max_width = 1 bits.(<<) branch_factor):
   private implements Equatable
 
@@ -316,7 +274,7 @@ fun radix_of(index :: Int, branch_factor, height) :~ Int:
   | (index bits.(>>) (branch_factor * height)) bits.and ((1 bits.(<<) branch_factor) - 1)
                       
 fun scan_sizes(sizes, target_index, i = 0) :~ Int:
-  if ref(sizes, i) <= target_index
+  if sizes[i] <= target_index
   | scan_sizes(sizes, target_index, i + 1)
   | i
 
@@ -326,7 +284,7 @@ fun step(node :: Node, index, branch_factor, depth) :~ (NonnegInt, NonnegInt):
   values(branch,
          if branch == 0
          | index
-         | index - ref(node.sizes, branch - 1))
+         | index - node.sizes[branch - 1])
 
 // count number of nodes that either have room themselves for another element and/or branch,
 // or one of their right-most descendants has room
@@ -360,8 +318,8 @@ fun build(n, count, height, el):
                        height - 1,
                        el)),
          n.sizes && set_vec(n.sizes,
-                            len(n.sizes) - 1,
-                            ref(n.sizes, len(n.sizes) - 1) + 1))
+                            n.sizes.length() - 1,
+                            n.sizes[n.sizes.length() - 1] + 1))
 
 // create a branch of height `height` terminating in a unary leaf node containing `el`
 fun new_branch(el, height):
