@@ -8,6 +8,8 @@ export:
   copy_vec
   add_vec
   set_vec
+  truncate
+  append_vec
 
 /* Array utilities for imitating immutable arrays */
 
@@ -97,6 +99,15 @@ module test:
                  "the industrial revolution and its consequences...")
 
 /* convenience utilities */
+
+fun truncate(a :: Array, to_len :: Int) :: Array:
+  def ret = Array.make(to_len)
+  Array.copy_from(ret, 0, a, 0, to_len)
+  ret
+
+module test:
+  check: truncate(Array(1, 2, 3, 4), 3)
+         ~is_now Array(1, 2, 3)
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
