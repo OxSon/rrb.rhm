@@ -58,6 +58,33 @@ class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
   method set(index, el) :~ Node:
     Node(set_vec(children, index, el), sizes)
 
+
+fun concat_subtree(left :: Node,
+                   height_l :: Int,
+                   right :: Node,
+                   height_r :: Int,
+                   top :: Boolean = #false) :~ Node: // TODO new height too?
+  cond
+  /* only trees of the same height can be concatenated */
+  | height_l > height_r:
+      rebalance(left,
+                concat_subtree(left.last, height_l - 1, right, height_r),
+                #false,
+                #false)
+  | height_l < height_r:
+      rebalance(#false,
+                concat_subtree(left, height_l, right.first, height_r - 1),
+                right,
+                #false)
+  | ~else:
+      TODO "finish"
+    
+fun concat_plan(node :: List.of(Node)) :~ (Array, Int):
+  TODO "concat_plan"
+
+fun rebalance(left :: Node, center :: Node, right :: Node, top :: Boolean) :~ Node:
+  TODO "rebalance"
+
     
 fun leaf(args, ...) :~ Node:
   Node(vec(args, ...))
@@ -198,10 +225,6 @@ class Tree(root :: Node = Node(),
 
   method concat(rhs :: Tree) :~ Tree:
     TODO "concat"
-
-
-fun concat_plan(node :: List.of(Node)) :~ (Array.now_of(Int), Int):
-  TODO "concat_plan"
 
 module test:
   def l_root = Node(
