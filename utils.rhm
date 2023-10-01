@@ -12,6 +12,7 @@ export:
   append_vec
   vec_take
   vec_drop
+  vec_split
 
 /* Array utilities for imitating immutable arrays */
 
@@ -21,10 +22,12 @@ import lib("racket/vector.rkt") as v:
   rename:
     #{vector-take} as vec_take
     #{vector-drop} as vec_drop
-
+    #{vector-split-at} as vec_split
+    
   expose:
     vec_take
     vec_drop
+    vec_split
   
 annot.macro 'Vec':
   annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
