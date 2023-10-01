@@ -47,7 +47,7 @@ class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
 
   private override hash_code(recur):
     if len(children) == 0
-    | 0 // TODO is this an ok hash code?
+    | 0
     | for values(hc = recur(ref(children, 0))):
         each i: 1..len(children)
         Equatable.hash_code_combine(hc, recur(ref(children, i)))
@@ -192,24 +192,101 @@ class Tree(root :: Node = Node(),
            size + 1,
            height,
            branch_factor)
-          
-                
-  method concat(rhs :: Tree) :~ Tree:
-    TODO "concat"
-  
+   
   method split(at :: NonnegInt, side :: Any.of(#'left, #'right, #'l, #'r)) :~ Tree:
     TODO "split"
 
-module test:
-  check: Tree()
-         ~is Tree()
+  method concat(rhs :: Tree) :~ Tree:
+    TODO "concat"
 
-  check: Tree(leaf(1, 2, 3), 3, 0, 4)
-         ~is Tree(leaf(1, 2, 3), 3, 0, 32)
+
+fun concat_plan(node :: List.of(Node)) :~ (Array.now_of(Int), Int):
+  TODO "concat_plan"
+
+module test:
+  def l_root = Node(
+    vec(Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 1, 2, 3),
+              leaf(4, 5, 6, 7),
+              leaf(8, 9, 10)))))
+
+           
+  def r_root = Node(
+    vec(Node(
+          vec(leaf(0, 1, 2, 3),
+              leaf(4, 5, 6, 7),
+              leaf(8, 9, 10, 11),
+              leaf(12, 13, 14, 15))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0)))))
+
+  def concat_root = Node(
+    vec(Node(
+        vec(Node(
+              vec(leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0))),
+            Node(
+              vec(leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0))),
+            Node(
+              vec(leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0))),
+            Node(
+              vec(leaf(0, 1, 2, 3),
+                  leaf(4, 5, 6, 7),
+                  leaf(8, 9, 10, 0),
+                  leaf(1, 2, 3, 4))))),
+        Node(
+          vec(Node(
+                vec(leaf(5, 6, 7, 8),
+                    leaf(9, 10, 11, 12),
+                    leaf(13, 14, 15))),
+              Node(
+                vec(leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0))),
+              Node(
+                vec(leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0)))))))
+
+  check: Tree(l_root, 59, 2, 4).concat(Tree(r_root, 48, 2, 4))
+         ~is Tree(concat_root, 59 + 48, 3, 4)
 
 
 /* helper functions */
-
+      
 fun radix_of(index :: Int, branch_factor, height) :~ Int:
   if height == 0
   | index bits.and ((1 bits.(<<) branch_factor) - 1)
@@ -272,6 +349,10 @@ fun new_branch(el, height):
 
 
 module test:
+  check: Tree()
+         ~is Tree()
+  check: Tree(leaf(1, 2, 3), 3, 0, 4)
+         ~is Tree(leaf(1, 2, 3), 3, 0, 32)
   check: Tree(leaf(), 0, 0).add(0)
          ~is Tree(leaf(0), 1, 0)
   check: Tree(leaf(0), 1, 0, 1).add(1)
@@ -414,7 +495,7 @@ module test:
   check: Tree().branch_factor
          ~is 5
          
-  check: Tree(~bf: 2).width
+  check: Tree(Node(), 0, 0, 2).width
          ~is 4
 
   check: Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)), 4, 1, 1).get(1)
