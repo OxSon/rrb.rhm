@@ -47,6 +47,11 @@ class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
   method set(index, el) :~ Node:
     Node(set_vec(children, index, el), sizes)
 
+
+    
+fun leaf(args, ...) :~ Node:
+  Node(vec(args, ...))
+
 module test:
   check: leaf(1, 2, 3).first
          ~is 1
@@ -56,36 +61,200 @@ module test:
          ~is leaf(#'b, #'c)
          
 
-
+// TODO: should probably just pass around the raw children vectors
+// since we're ignoring sizes until the end anyway
 fun concat_subtree(left :: Node,
                    height_l :: Int,
                    right :: Node,
                    height_r :: Int,
-                   top :: Boolean = #false) :~ Node: // TODO new height too?
+                   width,
+                   top :: Boolean = #false,
+                   max_error = 2) :~ Node: // TODO new height too?
   cond
   /* only trees of the same height can be concatenated */
   | height_l > height_r:
       rebalance(left,
-                concat_subtree(left.last, height_l - 1, right, height_r),
+                concat_subtree(left.last, height_l - 1, right, height_r, width),
                 #false,
-                #false)
+                #false,
+                width,
+                max_error)
   | height_l < height_r:
       rebalance(#false,
-                concat_subtree(left, height_l, right.first, height_r - 1),
+                concat_subtree(left, height_l, right.first, height_r - 1, width),
                 right,
-                #false)
+                #false,
+                width,
+                max_error)
+  | height_l == 0:
+      if top && left.size + right.size <= width
+      | Node(append_vec(left.children, right.children))
+      | Node(vec(left, right))
   | ~else:
-      TODO "finish"
-    
-fun concat_plan(node :: List.of(Node)) :~ (Array, Int):
-  TODO "concat_plan"
+      /* two internal nodes with same height */
+      rebalance(left,
+                concat_subtree(left.last, height_l - 1, right.first, height_r - 1, width),
+                right,
+                #false,
+                width,
+                max_error)
 
-fun rebalance(left :: Node, center :: Node, right :: Node, top :: Boolean) :~ Node:
-  TODO "rebalance"
+fun calc_height_and_wrap(root :: Node, size :: Int, branch_factor :: Int):
+  def height = TODO "walk to find height"
+  Tree(root, size, height, branch_factor)
 
-    
-fun leaf(args, ...) :~ Node:
-  Node(vec(args, ...))
+/* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
+fun concat_plan(node :: Node, width :: Int, max_error = 2) :: Array:
+  def plan = Array.make(node.size)
+  def child_count:
+    for values(count = 0):
+      each i: 0 .. node.size
+              
+      plan[i] := node.get(i).size
+      count + plan[i]
+
+  def optimal_node_len = math.ceiling(child_count / width)
+  def target_node_len = optimal_node_len + max_error
+  
+  if target_node_len >= plan.length()
+  | plan
+  | def starting_node:
+      for values(i = 0):
+        break_when plan[i] < width - max_error / 2
+        i + 1
+    distribute(plan,
+               target_node_len,
+               plan.length(),
+               plan[starting_node],
+               width,
+               starting_node)
+             
+
+fun distribute(plan,
+               target_node_len,
+               count,
+               remaining,
+               width,
+               node_idx = 0) :: Array:
+  cond
+  | target_node_len >= count:
+      truncate(plan, count)
+  | remaining > 0:
+      def min_size = math.min(remaining + plan[node_idx + 1], width)
+      plan[node_idx] := min_size
+      
+      distribute(plan,
+                 target_node_len,
+                 count,
+                 remaining + plan[node_idx + 1] - plan[node_idx],
+                 width,
+                 node_idx + 1)
+  | ~else:
+      for (j: node_idx .. count - 1):
+        /* we've removed a node (conceptually) at this point,
+        so shift nodes to the right of current node left by one */
+        plan[j] := plan[j + 1]
+      distribute(plan,
+                 target_node_len,
+                 count - 1,
+                 plan[node_idx - 1],
+                 width,
+                 /* we must check the last node we distributed once more, it can still have too few children */
+                 node_idx - 1)
+
+module test:
+  let width = 4
+  let left = Node(vec(leaf(1, 2, 3, 4),
+                      leaf(5, 6)))
+  let right = Node(vec(leaf(7, 8, 9),
+                       leaf(10, 11),
+                       leaf(12, 13),
+                       leaf(14, 15, 16)),
+                   vec(3, 5, 7, 10))
+  let mega_node = Node(append_vec(left.children, right.children),
+                       vec(6, 16))
+
+  
+  check: concat_plan(mega_node, width, 1) 
+         ~is_now Array(4, 4, 3, 2, 3)
+
+// TODO
+         /*
+  check: concat_plan(mega_node, width, 3)
+         ~is Array(4,
+         */
+         
+
+fun rebalance(left :: Node, center :: Node, right :: Node, top :: Boolean, width, max_error) :~ Node:
+  def plan = concat_plan(merge_nodes(left.children, center.children, right.children),
+                         width,
+                         max_error)
+  def node = exec_concat_plan(plan)
+
+  cond
+  | node.size <= width && !top:
+      Node(vec(node))
+  | node.size <= width:
+      node
+  | ~else:
+      def (new_left, new_right) = vec_split(node.children, width)
+      // tODO sizes for new root?
+      Node(vec(set_sizes(new_left),
+               set_sizes(new_right)))
+
+fun exec_concat_plan(node :: Node, plan :: Array) :: Node:
+  TODO "exec_concat_plan"
+
+module test:
+  check: exec_concat_plan(Node(vec(leaf(1, 2, 3, 4),
+                                   leaf(5, 6),
+                                   leaf(7, 8, 9),
+                                   leaf(10, 11),
+                                   leaf(12, 13),
+                                   leaf(14, 15, 16))),
+                          Array(4, 4, 3, 2, 3))
+         ~is Node(vec(leaf(1, 2, 3, 4),
+                      leaf(5, 6, 7, 8),
+                      leaf(9, 10, 11),
+                      leaf(12, 13),
+                      leaf(14, 15, 16)))
+
+fun merge_nodes(left :: Vec, center :: Vec, right :: Vec) :: Node:
+  Node(
+    append_vec(
+      if left.length() == 0
+      | left
+      | vec_drop(left, 1),
+      center,
+      if right.length() == 0
+      | right
+      | vec_take(right, right.length() - 1)))
+
+module test:
+  check: merge_nodes(vec(1, 2, 3), vec(4, 5), vec(6, 7, 8, 9))
+         ~is Node(vec(1, 2, 3, 4, 5, 6, 7, 8, 9))
+  check: merge_nodes(vec(), vec(4), vec(8, 16))
+         ~is Node(vec(4, 8, 16))
+  check: merge_nodes(vec(0, 2), vec(), vec(4, 8, 16, 32))
+         ~is Node(vec(0, 2, 4, 8, 16, 32))
+  check: merge_nodes(vec(0), vec(2, 4, 8), vec())
+         ~is Node(vec(0, 2, 4, 8))
+
+fun set_sizes(node :: Vec) :: Node:
+  TODO "set sizes"
+
+module test:
+  check: set_sizes(vec(leaf(1, 2, 3, 4),
+                       leaf(5, 6, 7, 8),
+                       leaf(9, 10, 11),
+                       leaf(12, 13),
+                       leaf(14, 15, 16)))
+         ~is Node(vec(leaf(1, 2, 3, 4),
+                      leaf(5, 6, 7, 8),
+                      leaf(9, 10, 11),
+                      leaf(12, 13),
+                      leaf(14, 15, 16)),
+                  vec(4, 8, 11, 13, 16))
   
 module test:
   check:
@@ -182,7 +351,7 @@ class Tree(root :: Node = Node(),
     TODO "split"
 
   method concat(rhs :: Tree) :~ Tree:
-    TODO "concat"
+    calc_height_and_wrap(concat_subtree(root, height, rhs.root, rhs.height, max_width, #true))
 
 module test:
   def l_root = Node(
@@ -262,6 +431,7 @@ module test:
                     leaf(0, 0, 0, 0),
                     leaf(0, 0, 0, 0)))))))
 
+  #//
   check: Tree(l_root, 59, 2, 4).concat(Tree(r_root, 48, 2, 4))
          ~is Tree(concat_root, 59 + 48, 3, 4)
 
