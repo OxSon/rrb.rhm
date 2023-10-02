@@ -10,8 +10,8 @@ export:
   set_vec
   truncate
   append_vec
-  vec_take
   vec_drop
+  vec_drop_right
   vec_split
 
 /* Array utilities for imitating immutable arrays */
@@ -20,13 +20,14 @@ import rhombus/meta open
 import lib("racket/base.rkt") as r
 import lib("racket/vector.rkt") as v:
   rename:
-    #{vector-take} as vec_take
+    // TODO remove exposure of unused functions
     #{vector-drop} as vec_drop
+    #{vector-drop-right} as vec_drop_right
     #{vector-split-at} as vec_split
     
   expose:
-    vec_take
     vec_drop
+    vec_drop_right
     vec_split
   
 annot.macro 'Vec':
