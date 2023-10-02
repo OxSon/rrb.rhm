@@ -5,6 +5,7 @@ export:
   ^
   Vec
   vec
+  array_to_vec // TODO get rid of this, shouldn't need it in the end i think
   copy_vec
   add_vec
   set_vec
@@ -37,6 +38,9 @@ annot.macro 'Vec':
 fun vec(args, ...) :: Vec:
   r.#{vector-immutable}(args, ...)
 
+fun array_to_vec(a :: Array) :: Vec:
+  r.#{vector->immutable-vector}(a)
+
 module test:
   check: vec(1, 2, 3) :: Vec
          ~is r.#{vector-immutable}(1, 2, 3)
@@ -51,6 +55,9 @@ module test:
 
   check: vec(1, 2, 3)[0] := -1
          ~raises ""
+
+  check: array_to_vec(Array(1, 2, 3)) :: Vec
+         ~is vec(1, 2, 3)
 
 fun copy_vec(v :: Vec) :: Vec:
   r.#{vector->immutable-vector}(Array.copy(v))
