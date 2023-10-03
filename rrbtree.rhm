@@ -252,6 +252,7 @@ fun concat_subtree(left :: Node,
   | ~else:
       /* two internal nodes with same height */
       rebalance(left,
+                // TODO inline call to rebalance here when height > 1, since we'll end up here again?
                 concat_subtree(left.last,
                                height_l - 1,
                                right.first,
@@ -312,6 +313,13 @@ module test:
              ~is Node(vec(leaf(1, 2, 3),
                           leaf(4, 5, 6, 7),
                           leaf(8, 9)))
+
+  with_shift_inc(2):
+    parameterize {max_error:0}:
+      check: concat_plan(merge_nodes(Node(vec(leaf(0), leaf(1)), vec(1, 2)),
+                                     concat_subtree(leaf(1), 0, leaf(2, 3, 4), 0, #false),
+                                     Node(vec(leaf(2,3,4),leaf(5,6,7,8)), vec(3,7))))
+             ~is_now Array(2, 3, 4)
                    
 
 /* merge all children except for the rightmost in `left` and leftmost in `right` */
@@ -384,7 +392,8 @@ fun concat_plan(slots :: Vec) :: Array || False:
   
   if target_node_len >= plan.length()
   | #false
-  | def starting_node:
+  | // tODO can i take this out now that its part of distribute's recurison?
+    def starting_node:
       for values(i = 0):
         break_when plan[i] < max_width() - max_error() / 2
         i + 1
@@ -418,6 +427,8 @@ fun distribute(plan :: Array,
   cond
   | target_node_len >= count:
       truncate(plan, count)
+  | plan[node_idx] >= max_width() - max_error() / 2:
+      distribute(plan, target_node_len, count, remaining, node_idx + 1)
   | remaining > 0:
       def min_size = math.min(remaining + plan[node_idx + 1], max_width())
       plan[node_idx] := min_size
@@ -438,7 +449,7 @@ fun distribute(plan :: Array,
                  plan[node_idx - 1],
                  /* we must check the last node we distributed once more, it can still have too few children */
                  node_idx - 1)
-
+      
 module test:
   let left = vec(leaf(1, 2, 3, 4),
                  leaf(5, 6))
@@ -453,6 +464,13 @@ module test:
       check: concat_plan(slots) 
              ~is_now Array(4, 4, 3, 2, 3)
 
+  with_shift_inc(2):
+    parameterize {max_error: 1}:
+      check: distribute(Array(1, 4, 4, 4, 4, 4, 1, 1),
+                        math.ceiling(23 / 4) + 1,
+                        8,
+                        1)
+             ~is_now Array(4, 4, 4, 4, 4, 4, 2)
 // TODO
          /*
   check: concat_plan(slots, width, 3)
@@ -621,13 +639,13 @@ module test:
             Node(
               vec(leaf(0, 1, 2, 3),
                   leaf(4, 5, 6, 7),
-                  leaf(8, 9, 10, 0),
-                  leaf(1, 2, 3, 4))))),
+                  leaf(8, 9, 10),
+                  leaf(0, 1, 2, 3))))),
         Node(
           vec(Node(
-                vec(leaf(5, 6, 7, 8),
-                    leaf(9, 10, 11, 12),
-                    leaf(13, 14, 15))),
+                vec(leaf(4, 5, 6, 7),
+                    leaf(8, 9, 10, 11),
+                    leaf(12, 13, 14, 15))),
               Node(
                 vec(leaf(0, 0, 0, 0),
                     leaf(0, 0, 0, 0),
@@ -639,11 +657,51 @@ module test:
                     leaf(0, 0, 0, 0),
                     leaf(0, 0, 0, 0)))))))
 
-  // TODO this is coming out _very_ close to correct, need to investigate
-  // if perhaps the test I set up was wrong first
   with_shift_inc(2):
-    check: Tree(l_root, 59, 2).concat(Tree(r_root, 48, 2))
-           ~is Tree(concat_root, 59 + 48, 3)
+    parameterize { max_error: 1 }:
+      check: Tree(l_root, 59, 2).concat(Tree(r_root, 48, 2))
+             ~is Tree(concat_root, 59 + 48, 3)
+
+  let left = Node(vec(Node(vec(leaf(0, 0, 0),
+                               leaf(0, 0, 0, 0),
+                               leaf(0, 0, 0),
+                               leaf(0, 0, 0, 0)),
+                           vec(3, 7, 10, 14)),
+                      Node(vec(leaf(1, 2, 3, 4),
+                               leaf(5, 6)))),
+                  vec(14, 20))
+  
+  let right = Node(vec(Node(vec(leaf(7, 8, 9),
+                                leaf(10, 11),
+                                leaf(12, 13),
+                                leaf(14, 15, 16)),
+                            vec(3, 5, 7, 10)),
+                       Node(vec(leaf(0, 0, 0),
+                                leaf(0, 0, 0, 0)),
+                            vec(3, 7))),
+                   vec(10, 17))
+
+  let concatted = Node(vec(Node(vec(leaf(0, 0, 0),
+                                    leaf(0, 0, 0, 0),
+                                    leaf(0, 0, 0),
+                                    leaf(0, 0, 0, 0)),
+                                vec(3, 7, 10, 14)),
+                           Node(vec(leaf(1, 2, 3, 4),
+                                    leaf(5, 6, 7, 8),
+                                    leaf(9, 10, 11),
+                                    leaf(12, 13)),
+                                vec(4, 8, 11, 13)),
+                           Node(vec(leaf(14, 15, 16))),
+                           Node(vec(leaf(0, 0, 0),
+                                    leaf(0, 0, 0, 0)),
+                                vec(3, 7))),
+                       vec(14, 27, 34, 37))
+
+  with_shift_inc(2):
+    parameterize { max_error: 1}:
+      check: Tree(left, 20, 2).concat(Tree(right, 17, 2))
+             ~is Tree(concatted, 37, 2)
+    
 
   let left = Node(vec(
                     Node(vec(leaf(1, 2),
