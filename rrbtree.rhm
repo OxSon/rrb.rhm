@@ -191,17 +191,12 @@ class Tree(root :: Node,
     TODO "split"
 
   method concat(rhs :: Tree) :~ Tree:
-    // TODO we're ending up with an extra unary node wrapping the root node we really want,
-    // so our tree depth is 1 more than we want. For now, just check for that and drop it.
-    // todo: find source. Something is wrong with our use of `top` argument for `concat_subtree` and `rebalance`, probably
-    def root_candidate = concat_subtree(root,
+    calc_height_and_wrap(concat_subtree(root,
                                         height,
                                         rhs.root,
                                         rhs.height,
-                                        #true)
-    if root_candidate.size == 1
-    | calc_height_and_wrap(root_candidate.get(0), size + rhs.size)
-    | calc_height_and_wrap(root_candidate, size + rhs.size)
+                                        #true),
+                         size + rhs.size)
 
   // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time
   // rather than traverse once per element of represented vector
@@ -225,8 +220,6 @@ module test:
   check: Tree().add(1).add(2).add(3).to_list()
          ~is [1, 2, 3]
 
-// TODO: should probably just pass around the raw children vectors
-// since we're ignoring sizes until the end anyway
 fun concat_subtree(left :: Node,
                    height_l :: Int,
                    right :: Node,
@@ -242,17 +235,16 @@ fun concat_subtree(left :: Node,
                                height_r),
                 #false,
                 height_l,
-                #false)
+                top)
   | height_l < height_r:
       rebalance(#false,
                 concat_subtree(left,
                                height_l,
                                right.first,
-                               height_r - 1,
-                               #false),
+                               height_r - 1),
                 right,
                 height_r,
-                #false)
+                top)
   | height_l == 0:
       if top && left.size + right.size <= max_width()
       | Node(append_vec(left.children, right.children))
@@ -263,18 +255,16 @@ fun concat_subtree(left :: Node,
                 concat_subtree(left.last,
                                height_l - 1,
                                right.first,
-                               height_r - 1,
-                               #false),
+                               height_r - 1),
                 right,
                 height_l,
-                #false)
+                top)
 
 module test:
   let left = Node(vec(leaf(1, 2), leaf(3)),
                   vec(2, 3))
   let right = Node(vec(leaf(4, 5, 6, 7), leaf(8, 9)))
 
-  // TODO ending up with one extra height here, where root has 1 child (a root with one child can always be dropped one level)
   with_shift_inc(2):
     check: concat_subtree(left, 1, right, 1, #true)
            ~is Node(vec(leaf(1, 2),
@@ -318,7 +308,7 @@ module test:
 
   with_shift_inc(2):
     parameterize { max_error: 0 }:
-      check: rebalance(left, concat_subtree(left.last, 0, right.first, 0, #false), right, 1, #false)
+      check: rebalance(left, concat_subtree(left.last, 0, right.first, 0, #false), right, 1, #false).get(0)
              ~is Node(vec(leaf(1, 2, 3),
                           leaf(4, 5, 6, 7),
                           leaf(8, 9)))
@@ -374,6 +364,9 @@ module test:
 
   check: set_sizes(vec(leaf(1, 2), leaf(3)), 1)
          ~is Node(vec(leaf(1, 2), leaf(3)))
+
+  check: set_sizes(vec(1, 2, 3, 4), 0)
+         ~is leaf(1, 2, 3, 4)
 
 
 /* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
@@ -468,7 +461,6 @@ module test:
 
 
 fun exec_concat_plan(slots :: Vec,
-                     // TODO strange I had to wrap annotation in parens here but not in other `X || False` annots
                      plan :: (Array || False)) :: Vec:
   if !plan
   | slots
