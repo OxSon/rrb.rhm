@@ -754,33 +754,46 @@ module test:
          ~is Tree(leaf(0), 1, 0)
   check: Tree(leaf(0), 1, 0).add(1)
          ~is Tree(leaf(0, 1), 2, 0)
+         
   with_shift_inc(1):
     check: Tree(leaf(0, 1), 2, 0).add(2)
            ~is Tree(Node(vec(leaf(0, 1), leaf(2))), 3, 1)
     check: Tree(Node(vec(leaf(0), leaf(1)), vec(1, 2)), 2, 1).add(2)
            ~is Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)), 3, 1)
 
-    check: (Tree(
-             Node(
-               vec(Node(vec(leaf(0, 1), leaf(2))),
-                   Node(vec(leaf(3, 4), leaf(5, 6)))),
-               vec(3, 7)
-             ),
-             7, 2)
-            ).add(7)
-           ~is Tree(
-             Node(vec(
-                    Node(
-                      vec(Node(vec(leaf(0, 1), leaf(2))),
-                          Node(vec(leaf(3, 4), leaf(5, 6)))),
-                      vec(3, 7)
-                    ),
-                    Node(
-                      vec(Node(vec(leaf(7)))))),
-                  vec(7, 8)),
-             8, 3)
-
   with_shift_inc(2):
+    let (left, right):
+      for values(l = Tree(), r = Tree()):
+        each i: 0..32
+        values(l.add(i),
+               r.add(i + 32))
+
+    check: left.concat(right).to_list()
+           ~is List.iota(64)
+
+
+    let higher_right:
+      for values(r = right):
+        each i: 0..64
+        r.add(i + 64)
+
+    check: left.concat(higher_right).to_list()
+           ~is List.iota(128)
+
+    // now try higher left
+    let left:
+      for values(l = Tree()):
+        each i: 0..32
+        l.add(i)
+    let right:
+      for values(r = Tree()):
+        each i: 0..16
+        r.add(i + 32)
+
+    check: left.concat(right).to_list()
+           ~is List.iota(32 + 16)
+ 
+
     let t = Tree(
       Node(
         vec(
@@ -836,6 +849,28 @@ module test:
          ~is Tree(leaf(-1, 1, 2), 3, 0)
 
   with_shift_inc(1):
+    check: (Tree(
+             Node(
+               vec(Node(vec(leaf(0, 1), leaf(2))),
+                   Node(vec(leaf(3, 4), leaf(5, 6)))),
+               vec(3, 7)
+             ),
+             7, 2)
+            ).add(7)
+           ~is Tree(
+             Node(vec(
+                    Node(
+                      vec(Node(vec(leaf(0, 1), leaf(2))),
+                          Node(vec(leaf(3, 4), leaf(5, 6)))),
+                      vec(3, 7)
+                    ),
+                    Node(
+                      vec(Node(vec(leaf(7)))))),
+                  vec(7, 8)),
+             8, 3)
+    check: Tree(leaf(0), 1, 0).concat(Tree(leaf(1), 1, 0))
+           ~is Tree(leaf(0, 1), 2, 0)
+
     let t = Tree(
              Node(
                vec(
