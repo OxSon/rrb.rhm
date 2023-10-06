@@ -34,8 +34,12 @@ module test:
            shift_mask() ~is 3
 
 /* a node in the RRB Tree
-  - a node is balanced if it is a leaf, or if its first `n - 1` children each have exactly `m`
-    children where `m` is the branch factor of the containing `Tree` and `n = len(children)`
+
+  - a node is fully dense if it has exactly `m` children where `m` is the branching factor of the overall Tree
+    and each child is also fully dense
+  - a node is leftwise dense if its first `n - 1` children, where `n` is its total number of children,
+    are fully dense, and its `n`th child is leftwise-dense or fully dense. `n` is allowed to be < `m`
+  - a node is balanced if it is leftwise dense or fully dense (note that leaves are always at least leftwise dense)
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
 class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
