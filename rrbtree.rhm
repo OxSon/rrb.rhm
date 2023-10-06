@@ -5,8 +5,6 @@ import "utils.rhm" open
 export:
   Tree
 
-// NOTE: for the purposes of this module, `Vec` means immutable vector, `Array` means possibly-mutable vector.
-// a Vec can fulfill an Array annotation, but an Array cannot fulfill a Vec annotation
 
 /* Parameters: not needed for final code but nice for development testing */
 fun instantiate_params(shift_increment :: Int):
@@ -955,6 +953,36 @@ module test:
              8,
              2).get(4)
            ~is 4
+
+  let t1:
+    for values(t = Tree()):
+      each i: 0 .. 2048
+      t.add(i)
+
+  let t2:
+    def l:
+      for values(t = Tree()):
+        each i: 0 .. 1024
+        t.add(i)
+    def r:
+      for values(t = Tree()):
+        each i: List.iota(1024)
+        t.add(i + 1024)
+    l.concat(r)
+
+  check: t2.root.balanced ~is #false
+         t2.root.get(0).balanced ~is #false
+         t2.root.get(1).balanced ~is #false
+
+  check: for values(balanced = #true):
+           each i: 0..t2.root.get(0).size
+           balanced && t2.root.get(0).get(i).balanced
+         ~is #true
+
+  check: for values(balanced = #true):
+           each i: 0..t2.root.get(1).size
+           balanced && t2.root.get(1).get(i).balanced
+         ~is #true
 
 
 /* helper functions */
