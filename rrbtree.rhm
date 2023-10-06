@@ -1,255 +1,837 @@
 #lang rhombus
 
 import "utils.rhm" open
-import "stv_compat.rhm" open
 
 export:
   Tree
 
+
+/* Parameters: not needed for final code but nice for development testing */
+fun instantiate_params(shift_increment :: Int):
+  values(
+    /* shift increment,
+       max width of a node,
+       mask for radix search bit stuff,
+       max tolerated extra linear search steps for relaxed indexing
+    */
+    Parameter.make(shift_increment),
+    Parameter.make(1 bits.(<<) shift_increment),
+    Parameter.make((1 bits.(<<) shift_increment) - 1))
+  
+def (shift_inc, max_width, shift_mask) = instantiate_params(5)
+def max_error = Parameter.make(2)
+
+macro 'with_shift_inc($inc): $body':
+  'parameterize { shift_inc: $inc,
+                  max_width: 1 bits.(<<) $inc,
+                  shift_mask: (1 bits.(<<) $inc) - 1 }:
+     $body'
+
+module test:
+  with_shift_inc(2):
+    check: shift_inc() ~is 2
+           max_width() ~is 4
+           shift_mask() ~is 3
+
 /* a node in the RRB Tree
+
   - a node is fully dense if it has exactly `m` children where `m` is the branching factor of the overall Tree
     and each child is also fully dense
   - a node is leftwise dense if its first `n - 1` children, where `n` is its total number of children,
     are fully dense, and its `n`th child is leftwise-dense or fully dense. `n` is allowed to be < `m`
-  - a node is balanced if it is leftwise dense or fully dense
+  - a node is balanced if it is leftwise dense or fully dense (note that leaves are always at least leftwise dense)
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
-class Node(children :: Vec, sizes :: Vec || False = #false):
-  constructor
-  | (): super(vec())
-  | (args, ...): super(args, ...)
+class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
+  private implements Equatable
  
   property balanced:
     !sizes
     
+  property size:
+    children.length()
+
+  property first:
+    children[0]
+
+  property last:
+    children[children.length() - 1]
+
+  // TODO is_leaf property?
+
+
+  private override equals(rhs :: Node, recur):
+    children.length() == rhs.children.length()
+      && (for values(eq = #true):
+            each i: 0 .. children.length()
+            break_when !eq
+            recur(children[i], rhs.children[i]))
+
+  private override hash_code(recur):
+    if children.length() == 0
+    | 0
+    | for values(hc = children[0]):
+        each i: 1 .. children.length()
+        Equatable.hash_code_combine(recur(hc), recur(children[i]))
+    
   method get(index):
-    ref(children, index)
+    children[index]
 
   method set(index, el) :~ Node:
     Node(set_vec(children, index, el), sizes)
-    
-fun leaf(args, ...) :~ Node:
-  Node(vec(args, ...))
+
+
+macro 'leaf($args, ...)':
+  'Node(vec($args, ...))'
+
+module test:
+  check: leaf(1, 2, 3).first
+         ~is 1
+
+  check: Node(vec(leaf(#'a), leaf(#'b, #'c)),
+              vec(1, 3)).last
+         ~is leaf(#'b, #'c)
+
+  check: {Node(vec(leaf(1, 2, 3), leaf(4, 5)))}[Node(vec(leaf(1, 2, 3), leaf(4, 5)),
+                                                     vec(3, 5))]
+         ~is #true
+  check: {Node()}[Node(vec(),
+                       vec(0))]
+         ~is #true
+
   
 module test:
   check:
     Node(vec(1, 2, 3)).get(2)
     ~is 3
 
-  let t1 = Node(vec(Node(vec(0, 1)), Node(vec(2, 3))), vec(2, 4))
-  let t2 = t1.set(0, t1.get(0).set(0, -1))
-  check: t2
+  check:
+    Node(vec(1, 2, 3))
+    ~is Node(vec(1, 2, 3))
+
+  check:
+    Node(vec(leaf(1), leaf(2, 3)),
+         vec(1, 3))
+    ~is Node(vec(leaf(1), leaf(2, 3)))
+
+  let n1 = Node(vec(Node(vec(0, 1)), Node(vec(2, 3))), vec(2, 4))
+  let n2 = n1.set(0, n1.get(0).set(0, -1))
+  check: n2
          ~is Node(vec(Node(vec(-1, 1)), Node(vec(2, 3))), vec(2, 4))
 
-  check: t1.sizes === t2.sizes
+  check: n1.sizes === n2.sizes
          ~is #true
 
-  check: t1.get(1) === t2.get(1)
+  check: n1.get(1) === n2.get(1)
          ~is #true
 
   check: leaf(1, 2, 3)
          ~is Node(vec(1, 2, 3))
 
-
+                    
 class Tree(root :: Node,
-           size :: NonnegInt = 0,
-           height :: NonnegInt = 0,
-           branch_factor = bits.length(VEC_WIDTH) - 1,
-           private max_width = 1 bits.(<<) branch_factor):
-  
+           size :: NonnegInt,
+           height :: NonnegInt, // TODO store `shift` instead
+           ):
+  private implements Equatable
+
   constructor
-  | (): super(Node())
-  | (~bf: bf): super(Node(), 0, 0, bf)
-  | (args, ...): super(args, ...)
+  | (): super(Node(), 0, 0)
+  | (root, size, height): super(root, size, height)
 
   property balanced:
     root.balanced
-    
-  property width:
-    max_width
+
+  private override equals(rhs :: Tree, recur):
+    size == rhs.size && recur(root, rhs.root)
+
+  private override hash_code(recur):
+    recur(root)
 
   // get the element at `index`
   method get(index :: Int):
-    fun _get(node, index, depth):
+    recur get(node = root, index = index, depth = height):
       if node.balanced
       | for values(n = node):
           each i: 0 .. depth + 1
-          n.get(radix_of(index, branch_factor, depth - i))
-      | def (branch_index, subindex) = step(node, index, branch_factor, depth)
-        _get(node.get(branch_index), subindex, depth - 1)
-
-    _get(root, index, height)
+          n.get(radix_of(index, depth - i))
+      | def (branch_index, subindex) = step(node, index, depth)
+        get(node.get(branch_index), subindex, depth - 1)
 
   // set the slot at `index` to `el`
   method set(index :: Int, el) :~ Tree:
-    fun _set(node, index, el, depth):
+    def new_node = recur set(node = root, index = index, el = el, depth = height):
       cond
       | depth == 0:
-          node.set(radix_of(index, branch_factor, depth), el)
+          node.set(radix_of(index, depth), el)
       | node.balanced:
-          def branch_index = radix_of(index, branch_factor, depth)
-          node.set(branch_index, _set(node.get(branch_index), index, el, depth - 1))
+          def branch_index = radix_of(index, depth)
+          node.set(branch_index, set(node.get(branch_index), index, el, depth - 1))
       | ~else:
-          def (branch_index, subindex) = step(node, index, branch_factor, depth)
-          node.set(branch_index, _set(node.get(branch_index), subindex, el, depth - 1))
+          def (branch_index, subindex) = step(node, index, depth)
+          node.set(branch_index, set(node.get(branch_index), subindex, el, depth - 1))
 
-    Tree(_set(root, index, el, height), size, height, branch_factor)
+    Tree(new_node,  size,  height)
 
 
   // add `el` to end of vector
   method add(el) :~ Tree:
-    def count = copyable_count(root, width, height)
+    def count = copyable_count(root, height)
     if count == 0
     | /* not enough space in original tree */
       Tree(Node(vec(root, new_branch(el, height)),
                 root.sizes && vec(size, size + 1)),
            size + 1,
-           height + 1,
-           branch_factor)
+           height + 1)
     | /* enough space in original tree */
       Tree(build(root, count, height, el),
            size + 1,
-           height,
-           branch_factor)
-          
-                
-  method concat(rhs :: Tree) :~ Tree:
-    TODO "concat"
-  
+           height)
+   
   method split(at :: NonnegInt, side :: Any.of(#'left, #'right, #'l, #'r)) :~ Tree:
     TODO "split"
 
-/* helper functions */
+  method concat(rhs :: Tree) :~ Tree:
+    calc_height_and_wrap(concat_subtree(root,
+                                        height,
+                                        rhs.root,
+                                        rhs.height,
+                                        #true),
+                         size + rhs.size)
 
-fun radix_of(index :: Int, branch_factor, height) :~ Int:
-  if height == 0
-  | index bits.and ((1 bits.(<<) branch_factor) - 1)
-  | (index bits.(>>) (branch_factor * height)) bits.and ((1 bits.(<<) branch_factor) - 1)
-                      
-fun scan_sizes(sizes, target_index, i = 0) :~ Int:
-  if ref(sizes, i) <= target_index
-  | scan_sizes(sizes, target_index, i + 1)
-  | i
-
-// calculate next branch to take and subindex of `index` along that path
-fun step(node :: Node, index, branch_factor, depth) :~ (NonnegInt, NonnegInt):
-  def branch = scan_sizes(node.sizes, index, radix_of(index, branch_factor, depth))
-  values(branch,
-         if branch == 0
-         | index
-         | index - ref(node.sizes, branch - 1))
-
-// count number of nodes that either have room themselves for another element and/or branch,
-// or one of their right-most descendants has room
-fun copyable_count(node, width, height):
-  def (_, count):
-    for values(n = node, count = 0):
-      each i: 0 .. height + 1
-      def l = len(n.children)
-      values(if l == 0
-             | n
-             | n.get(l - 1),
-             if l < width
-             | i + 1
-             | count)
-  count
-
-
-
-//  using `count` returned from `copyable_count`, copy `count` nodes along right-most path of `n`,
-// then insert new element in leaf node or new branch if `count` << `height`
-fun build(n, count, height, el):
-  if count < 2
-  | if height == 0
-    | Node(add_vec(n.children, el))
-    | Node(add_vec(n.children,
-                   new_branch(el, height - 1)))
-  | Node(set_vec(n.children,
-                 len(n.children) - 1,
-                 build(n.get(len(n.children) - 1),
-                       count - 1,
-                       height - 1,
-                       el)),
-         n.sizes && set_vec(n.sizes,
-                            len(n.sizes) - 1,
-                            ref(n.sizes, len(n.sizes) - 1) + 1))
-
-// create a branch of height `height` terminating in a unary leaf node containing `el`
-fun new_branch(el, height):
-  if height == 0
-  | leaf(el)
-  | Node(vec(new_branch(el, height - 1)))
-
+  // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time
+  // rather than traverse once per element of represented vector
+  method to_list() :: List:
+    for List:
+      each idx: 0..size
+      get(idx)
 
 
 module test:
+  check: Tree().split(1, #'l)
+         ~raises ""
+
+  // failure currently expected
+  check: Tree().add(1).add(2).split(1, #'l)
+         ~is Tree().add(1)
+  // failure currently expected
+  check: Tree().add(1).add(2).split(1, #'r)
+         ~is Tree().add(2)
+
+  check: Tree().add(1).add(2).add(3).to_list()
+         ~is [1, 2, 3]
+
+fun concat_subtree(left :: Node,
+                   height_l :: Int,
+                   right :: Node,
+                   height_r :: Int,
+                   top :: Boolean = #false) :~ Node: // TODO new height too? can we determine that before calling? i don tthink so?
+  cond
+  /* only trees of the same height can be concatenated */
+  | height_l > height_r:
+      rebalance(left,
+                concat_subtree(left.last,
+                               height_l - 1,
+                               right,
+                               height_r),
+                #false,
+                height_l,
+                top)
+  | height_l < height_r:
+      rebalance(#false,
+                concat_subtree(left,
+                               height_l,
+                               right.first,
+                               height_r - 1),
+                right,
+                height_r,
+                top)
+  | height_l == 0:
+      if top && left.size + right.size <= max_width()
+      | Node(append_vec(left.children, right.children))
+      | set_sizes(vec(left, right), 1)
+  | ~else:
+      /* two internal nodes with same height */
+      rebalance(left,
+                // TODO inline call to rebalance here when height > 1, since we'll end up here again?
+                concat_subtree(left.last,
+                               height_l - 1,
+                               right.first,
+                               height_r - 1),
+                right,
+                height_l,
+                top)
+
+module test:
+  let left = Node(vec(leaf(1, 2), leaf(3)),
+                  vec(2, 3))
+  let right = Node(vec(leaf(4, 5, 6, 7), leaf(8, 9)))
+
+  with_shift_inc(2):
+    check: concat_subtree(left, 1, right, 1, #true)
+           ~is Node(vec(leaf(1, 2),
+                        leaf(3),
+                        leaf(4, 5, 6, 7),
+                        leaf(8, 9)))
+
+    parameterize { max_error: 0 }:
+      check: concat_subtree(left, 1, right, 1, #true)
+             ~is Node(vec(leaf(1, 2, 3),
+                          leaf(4, 5, 6, 7),
+                          leaf(8, 9)))
+
+fun rebalance(left :: (Node || False),
+              center :: Node,
+              right :: (Node || False),
+              height :: Int,
+              top :: Boolean) :~ Node:
+  def all_slots = merge_nodes(left, center, right)
+  def plan = concat_plan(all_slots)
+  def rebalanced_slots = exec_concat_plan(all_slots, plan)
+
+  cond
+  | rebalanced_slots.length() <= max_width() && !top:
+      Node(vec(set_sizes(rebalanced_slots, height)))
+  | rebalanced_slots.length() <= max_width():
+      set_sizes(rebalanced_slots, height)
+  | ~else:
+      def (new_left, new_right) = vec_split(rebalanced_slots, max_width())
+      set_sizes(vec(set_sizes(array_to_vec(new_left), height),
+                    set_sizes(array_to_vec(new_right), height)),
+                height + 1)
+
+module test:
+  //check: concat_plan(slots, 4, 0)
+  //       ~is_now Array(3, 4, 2)
+
+  let left = Node(vec(leaf(1, 2), leaf(3)),
+                  vec(2, 3))
+  let right = Node(vec(leaf(4, 5, 6, 7), leaf(8, 9)))
+
+  with_shift_inc(2):
+    parameterize { max_error: 0 }:
+      check: rebalance(left, concat_subtree(left.last, 0, right.first, 0, #false), right, 1, #false).get(0)
+             ~is Node(vec(leaf(1, 2, 3),
+                          leaf(4, 5, 6, 7),
+                          leaf(8, 9)))
+
+  with_shift_inc(2):
+    parameterize {max_error:0}:
+      check: concat_plan(merge_nodes(Node(vec(leaf(0), leaf(1)), vec(1, 2)),
+                                     concat_subtree(leaf(1), 0, leaf(2, 3, 4), 0, #false),
+                                     Node(vec(leaf(2,3,4),leaf(5,6,7,8)), vec(3,7))))
+             ~is_now Array(2, 3, 4)
+                   
+
+/* merge all children except for the rightmost in `left` and leftmost in `right` */
+fun merge_nodes(left :: (Node || False), center :: Node, right :: (Node || False)) :: Vec:
+  // TODO i dont really need these to be 'Vec's i.e. immutable, would need to import #{vector-append}
+  // rather than (in addition to?) my append_vec wrapper
+  
+  append_vec(if !left || left.size == 0 | vec() | vec_drop_right(left.children, 1),
+             center.children,
+             if !right || right.size == 0 | vec() | vec_drop(right.children, 1))
+
+module test:
+  check: merge_nodes(leaf(1, 2, 3), leaf(4, 5), leaf(6, 7, 8, 9))
+         ~is vec(1, 2, 4, 5, 7, 8, 9)
+  check: merge_nodes(leaf(), leaf(4), leaf(8, 16))
+         ~is vec(4, 16)
+  check: merge_nodes(leaf(0, 2), leaf(), leaf(4, 8, 16, 32))
+         ~is vec(0, 8, 16, 32)
+  check: merge_nodes(leaf(0), leaf(2, 4, 8), leaf())
+         ~is vec(2, 4, 8)
+
+// TODO how to avoid setting sizes when the tree is leftwise dense?
+fun set_sizes(children :: Vec, height :: Int) :: Node:
+  if height == 0
+  | Node(children)
+  | // TODO do this more efficiently
+    def (sizes, _):
+      for values(sizes = vec(), sum = 0):
+        each i: 0 .. children.length()
+        def child_size =  size_subtree(children[i], height - 1)
+        values(add_vec(sizes, sum + child_size),
+               sum + child_size) // TODO what i really want here is a `scanl` function
+             
+
+    Node(children, sizes)
+
+module test:
+  check: set_sizes(vec(leaf(1, 2, 3, 4),
+                       leaf(5, 6, 7, 8),
+                       leaf(9, 10, 11),
+                       leaf(12, 13),
+                       leaf(14, 15, 16)),
+                   1)
+         ~is Node(vec(leaf(1, 2, 3, 4),
+                      leaf(5, 6, 7, 8),
+                      leaf(9, 10, 11),
+                      leaf(12, 13),
+                      leaf(14, 15, 16)),
+                  vec(4, 8, 11, 13, 16))
+
+  check: set_sizes(vec(leaf(1, 2), leaf(3)), 1)
+         ~is Node(vec(leaf(1, 2), leaf(3)))
+
+  check: set_sizes(vec(1, 2, 3, 4), 0)
+         ~is leaf(1, 2, 3, 4)
+
+
+/* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
+fun concat_plan(slots :: Vec) :: Array || False:
+  def plan = Array.make(slots.length())
+  def child_count:
+    for values(count = 0):
+      each i: 0 .. slots.length()
+              
+      plan[i] := slots[i].size
+      count + plan[i]
+
+  def optimal_node_len = math.ceiling(child_count / max_width())
+  def target_node_len = optimal_node_len + max_error()
+  
+  if target_node_len >= plan.length()
+  | #false
+  | // tODO can i take this out now that its part of distribute's recurison?
+    def starting_node:
+      for values(i = 0):
+        break_when plan[i] < max_width() - max_error() / 2
+        i + 1
+    distribute(plan,
+               target_node_len,
+               plan.length(),
+               plan[starting_node],
+               starting_node)
+
+module test:
+  let slots = vec(leaf(1, 2),
+                  leaf(3),
+                  leaf(4, 5, 6, 7),
+                  leaf(8, 9))
+
+  with_shift_inc(2):
+    parameterize { max_error: 1 }:
+      check: concat_plan(slots)
+             ~is #false
+           
+    parameterize { max_error: 0 }:
+      check: concat_plan(slots)
+             ~is_now Array(3, 4, 2)
+             
+
+fun distribute(plan :: Array,
+               target_node_len :: Int,
+               count :: Int,
+               remaining :: Int,
+               node_idx = 0) :: Array:
+  cond
+  | target_node_len >= count:
+      truncate(plan, count)
+  | plan[node_idx] >= max_width() - max_error() / 2:
+      distribute(plan, target_node_len, count, remaining, node_idx + 1)
+  | remaining > 0:
+      def min_size = math.min(remaining + plan[node_idx + 1], max_width())
+      plan[node_idx] := min_size
+      
+      distribute(plan,
+                 target_node_len,
+                 count,
+                 remaining + plan[node_idx + 1] - plan[node_idx],
+                 node_idx + 1)
+  | ~else:
+      for (j: node_idx .. count - 1):
+        /* we've removed a node (conceptually) at this point,
+        so move nodes to the right of current node left by one */
+        plan[j] := plan[j + 1]
+      distribute(plan,
+                 target_node_len,
+                 count - 1,
+                 plan[node_idx - 1],
+                 /* we must check the last node we distributed once more, it can still have too few children */
+                 node_idx - 1)
+      
+module test:
+  let left = vec(leaf(1, 2, 3, 4),
+                 leaf(5, 6))
+  let right = vec(leaf(7, 8, 9),
+                  leaf(10, 11),
+                  leaf(12, 13),
+                  leaf(14, 15, 16))
+  let slots = append_vec(left, right)
+
+  with_shift_inc(2):
+    parameterize { max_error: 1 }:
+      check: concat_plan(slots) 
+             ~is_now Array(4, 4, 3, 2, 3)
+
+  with_shift_inc(2):
+    parameterize {max_error: 1}:
+      check: distribute(Array(1, 4, 4, 4, 4, 4, 1, 1),
+                        math.ceiling(23 / 4) + 1,
+                        8,
+                        1)
+             ~is_now Array(4, 4, 4, 4, 4, 4, 2)
+// TODO
+         /*
+  check: concat_plan(slots, width, 3)
+         ~is Array(4,
+         */
+
+
+fun exec_concat_plan(slots :: Vec,
+                     plan :: (Array || False)) :: Vec:
+  if !plan
+  | slots
+  | def flattened:
+      for Array:
+        each node: slots
+        each child: node.children
+        child
+    // TODO use a conslist and iterate backwards here?    
+    def (_, new_slots):
+      for values(sum = 0, v = vec()):
+        each i: 0..plan.length()
+        values(sum + plan[i],
+               add_vec(v, Node(for values(v = vec()):
+                                 each j: sum .. sum + plan[i]
+                                 add_vec(v, flattened[j]))))
+    new_slots
+
+module test:
+  check: exec_concat_plan(vec(leaf(1, 2, 3, 4),
+                              leaf(5, 6),
+                              leaf(7, 8, 9),
+                              leaf(10, 11),
+                              leaf(12, 13),
+                              leaf(14, 15, 16)),
+                          Array(4, 4, 3, 2, 3))
+         ~is vec(leaf(1, 2, 3, 4),
+                 leaf(5, 6, 7, 8),
+                 leaf(9, 10, 11),
+                 leaf(12, 13),
+                 leaf(14, 15, 16))
+
+  check: exec_concat_plan(vec(leaf(1, 2),
+                              leaf(3),
+                              leaf(4, 5, 6, 7),
+                              leaf(8, 9)),
+                          Array(3, 4, 2))
+         ~is vec(leaf(1, 2, 3),
+                 leaf(4, 5, 6, 7),
+                 leaf(8, 9))
+
+  check: exec_concat_plan(vec(leaf(1, 2), leaf(3, 4)), #false)
+         ~is vec(leaf(1, 2), leaf(3, 4))
+
+  check: exec_concat_plan(vec(
+                            Node(vec(leaf(1), leaf(2), leaf(3), leaf(4))),
+                            Node(vec(leaf(5), leaf(6), leaf(7), leaf(8))),
+                            Node(vec(leaf(9))),
+                            Node(vec(leaf(10), leaf(11)))),
+                          Array(4, 4, 3))
+         ~is vec(Node(vec(leaf(1), leaf(2), leaf(3), leaf(4))),
+                 Node(vec(leaf(5), leaf(6), leaf(7), leaf(8))),
+                 Node(vec(leaf(9), leaf(10), leaf(11))))
+
+// TODO can we calculate this along the way and get rid of this extra traversal?
+fun calc_height_and_wrap(root :: Node, size :: Int):
+  def (_, height):
+    for values(node = root, height = 0):
+      each i: 0..
+      final_when !(node.first is_a Node)
+      values(node.first, i)
+    
+  Tree(root, size, height)
+
+module test:
+  check: calc_height_and_wrap(leaf(1, 2, 3), 3)
+         ~is Tree(leaf(1, 2, 3), 3, 0)
+  check: calc_height_and_wrap(Node(vec(leaf(1, 2, 3),
+                                       leaf(4, 5)),
+                                   vec(3, 5)),
+                              5)
+         ~is Tree(Node(vec(leaf(1, 2, 3),
+                           leaf(4, 5)),
+                       vec(3, 5)),
+                  5,
+                  1)
+
+// tODO switch to using actual shift (height * shift_inc)
+fun size_subtree(node :: Node, height :: Int):
+  cond
+  | height == 0:
+      node.children.length()
+  | node.sizes:
+      node.sizes[node.size - 1]
+  | ~else: // if sizes is #false, then we know we have a leftwise-dense subtree
+      ((node.size - 1) bits.(<<) (height * shift_inc())) + size_subtree(node.last, height - 1)
+
+module test:
+  with_shift_inc(2):
+    check: size_subtree(leaf(1, 2, 3, 4), 0)
+           ~is 4
+    check: size_subtree(Node(vec(0, 0, 0, 0, 0),
+                             vec(1, 2, 3, 4, 5)),
+                        1)
+           ~is 5
+    check: size_subtree(Node(vec(leaf(1, 2, 3, 4),
+                                 leaf(5, 6, 7, 8),
+                                 leaf(9, 10, 11))),
+                        1)
+           ~is 11
+
+module test:
+  def l_root = Node(
+    vec(Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 1, 2, 3),
+              leaf(4, 5, 6, 7),
+              leaf(8, 9, 10)))))
+
+           
+  def r_root = Node(
+    vec(Node(
+          vec(leaf(0, 1, 2, 3),
+              leaf(4, 5, 6, 7),
+              leaf(8, 9, 10, 11),
+              leaf(12, 13, 14, 15))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0))),
+        Node(
+          vec(leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0),
+              leaf(0, 0, 0, 0)))))
+
+  def concat_root = Node(
+    vec(Node(
+        vec(Node(
+              vec(leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0))),
+            Node(
+              vec(leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0))),
+            Node(
+              vec(leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0),
+                  leaf(0, 0, 0, 0))),
+            Node(
+              vec(leaf(0, 1, 2, 3),
+                  leaf(4, 5, 6, 7),
+                  leaf(8, 9, 10),
+                  leaf(0, 1, 2, 3))))),
+        Node(
+          vec(Node(
+                vec(leaf(4, 5, 6, 7),
+                    leaf(8, 9, 10, 11),
+                    leaf(12, 13, 14, 15))),
+              Node(
+                vec(leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0))),
+              Node(
+                vec(leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0),
+                    leaf(0, 0, 0, 0)))))))
+
+  with_shift_inc(2):
+    parameterize { max_error: 1 }:
+      check: Tree(l_root, 59, 2).concat(Tree(r_root, 48, 2))
+             ~is Tree(concat_root, 59 + 48, 3)
+
+  let left = Node(vec(Node(vec(leaf(0, 0, 0),
+                               leaf(0, 0, 0, 0),
+                               leaf(0, 0, 0),
+                               leaf(0, 0, 0, 0)),
+                           vec(3, 7, 10, 14)),
+                      Node(vec(leaf(1, 2, 3, 4),
+                               leaf(5, 6)))),
+                  vec(14, 20))
+  
+  let right = Node(vec(Node(vec(leaf(7, 8, 9),
+                                leaf(10, 11),
+                                leaf(12, 13),
+                                leaf(14, 15, 16)),
+                            vec(3, 5, 7, 10)),
+                       Node(vec(leaf(0, 0, 0),
+                                leaf(0, 0, 0, 0)),
+                            vec(3, 7))),
+                   vec(10, 17))
+
+  let concatted = Node(vec(Node(vec(leaf(0, 0, 0),
+                                    leaf(0, 0, 0, 0),
+                                    leaf(0, 0, 0),
+                                    leaf(0, 0, 0, 0)),
+                                vec(3, 7, 10, 14)),
+                           Node(vec(leaf(1, 2, 3, 4),
+                                    leaf(5, 6, 7, 8),
+                                    leaf(9, 10, 11),
+                                    leaf(12, 13)),
+                                vec(4, 8, 11, 13)),
+                           Node(vec(leaf(14, 15, 16))),
+                           Node(vec(leaf(0, 0, 0),
+                                    leaf(0, 0, 0, 0)),
+                                vec(3, 7))),
+                       vec(14, 27, 34, 37))
+
+  with_shift_inc(2):
+    parameterize { max_error: 1}:
+      check: Tree(left, 20, 2).concat(Tree(right, 17, 2))
+             ~is Tree(concatted, 37, 2)
+    
+
+  let left = Node(vec(
+                    Node(vec(leaf(1, 2),
+                             leaf(3, 4))),
+                    Node(vec(leaf(5, 6),
+                             leaf(7, 8)))))
+  let right = Node(vec(
+                     Node(vec(leaf(1, 2),
+                              leaf(3, 4))),
+                     Node(vec(leaf(5, 6),
+                              leaf(7, 8)))))
+
+  with_shift_inc(1):
+    check: Tree(left, 8, 2).concat(Tree(right, 8, 2)).to_list()
+           ~is [1, 2, 3, 4, 5, 6, 7, 8, 1, 2, 3, 4, 5, 6, 7, 8]
+
+  def tl = Tree(Node(vec(leaf(1, 2), leaf(3)), vec(2, 3)),
+                3, 1)
+  def tr = Tree(Node(vec(leaf(4, 5, 6, 7), leaf(8, 9))),
+                6, 1)
+  with_shift_inc(2):
+    let result = tl.concat(tr)
+    check: result
+           ~is Tree(Node(vec(leaf(1, 2),
+                             leaf(3),
+                             leaf(4, 5, 6, 7),
+                             leaf(8, 9)),
+                         vec(2, 3, 7, 9)),
+                    9, 1)
+    check: result.root.sizes
+           ~is vec(2, 3, 7, 9)
+           
+    parameterize { max_error: 0 }:
+      let result = tl.concat(tr)
+      check: result
+             ~is Tree(Node(vec(leaf(1, 2, 3),
+                               leaf(4, 5, 6, 7),
+                               leaf(8, 9))),
+                      9, 1)
+      check: result.root.sizes
+             ~is vec(3, 7, 9)
+
+
+module test:
+  check: Tree()
+         ~is Tree()
+  check: Tree(leaf(1, 2, 3), 3, 0)
+         ~is Tree(leaf(1, 2, 3), 3, 0)
   check: Tree(leaf(), 0, 0).add(0)
          ~is Tree(leaf(0), 1, 0)
-  check: Tree(leaf(0), 1, 0, 1).add(1)
-         ~is Tree(leaf(0, 1), 2, 0, 1)
-  check: Tree(leaf(0, 1), 2, 0, 1).add(2)
-         ~is Tree(Node(vec(leaf(0, 1), leaf(2))), 3, 1, 1)
-  check: Tree(Node(vec(leaf(0), leaf(1)), vec(1, 2)), 2, 1, 1).add(2)
-         ~is Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)), 3, 1, 1)
+  check: Tree(leaf(0), 1, 0).add(1)
+         ~is Tree(leaf(0, 1), 2, 0)
+         
+  with_shift_inc(1):
+    check: Tree(leaf(0, 1), 2, 0).add(2)
+           ~is Tree(Node(vec(leaf(0, 1), leaf(2))), 3, 1)
+    check: Tree(Node(vec(leaf(0), leaf(1)), vec(1, 2)), 2, 1).add(2)
+           ~is Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)), 3, 1)
 
-  check: (Tree(
-           Node(
-             vec(Node(vec(leaf(0, 1), leaf(2))),
-                 Node(vec(leaf(3, 4), leaf(5, 6)))),
-             vec(3, 7)
-           ),
-           7, 2, 1)
-          ).add(7)
-         ~is Tree(
-           Node(vec(
-                  Node(
-                    vec(Node(vec(leaf(0, 1), leaf(2))),
-                        Node(vec(leaf(3, 4), leaf(5, 6)))),
-                    vec(3, 7)
-                  ),
-                  Node(
-                    vec(Node(vec(leaf(7)))))),
-                vec(7, 8)),
-           8, 3, 1)
+  with_shift_inc(2):
+    let (left, right):
+      for values(l = Tree(), r = Tree()):
+        each i: 0..32
+        values(l.add(i),
+               r.add(i + 32))
 
-  let t = Tree(
-    Node(
-      vec(
-        Node(vec(leaf(0,   1,  2,  3),
-                 leaf(4,   5,  6,  7),
-                 leaf(8,   9, 10, 11),
-                 leaf(12, 13, 14))),
-        Node(vec(leaf(15, 16, 17, 18),
-                 leaf(19, 20, 21, 22),
-                 leaf(23, 24, 25, 26),
-                 leaf(27, 28, 29, 30))),
-        Node(vec(leaf(31, 32, 33, 34),
-                 leaf(35, 36, 37, 38),
-                 leaf(39, 40, 41, 42),
-                 leaf(43, 44, 45, 46))),
-        Node(vec(leaf(47, 48, 49, 50),
-                 leaf(51, 52, 53, 54),
-                 leaf(55, 56, 57, 58),
-                 leaf(59, 60, 61)))),
-      vec(15, 31, 47, 62)),
-    62, 2, 2)
-  let t2 = t.add(62)
-  for (i: 0..62):
-    check: t2.get(i)
-           ~is i
-  for (i: 0..3):
-    check: t.root.get(i) === t2.root.get(i)
-           ~is #true
-  for (i: 0..3):
-    check: t.root.get(3).get(i) === t2.root.get(3).get(i)
-           ~is #true
+    check: left.concat(right).to_list()
+           ~is List.iota(64)
 
-  check: t2.size
-         ~is t.size + 1
-  check: t2.height
-         ~is t.height
-  check: t2.branch_factor
-         ~is t.branch_factor
+
+    let higher_right:
+      for values(r = right):
+        each i: 0..64
+        r.add(i + 64)
+
+    check: left.concat(higher_right).to_list()
+           ~is List.iota(128)
+
+    // now try higher left
+    let left:
+      for values(l = Tree()):
+        each i: 0..32
+        l.add(i)
+    let right:
+      for values(r = Tree()):
+        each i: 0..16
+        r.add(i + 32)
+
+    check: left.concat(right).to_list()
+           ~is List.iota(32 + 16)
+ 
+
+    let t = Tree(
+      Node(
+        vec(
+          Node(vec(leaf(0,   1,  2,  3),
+                   leaf(4,   5,  6,  7),
+                   leaf(8,   9, 10, 11),
+                   leaf(12, 13, 14))),
+          Node(vec(leaf(15, 16, 17, 18),
+                   leaf(19, 20, 21, 22),
+                   leaf(23, 24, 25, 26),
+                   leaf(27, 28, 29, 30))),
+          Node(vec(leaf(31, 32, 33, 34),
+                   leaf(35, 36, 37, 38),
+                   leaf(39, 40, 41, 42),
+                   leaf(43, 44, 45, 46))),
+          Node(vec(leaf(47, 48, 49, 50),
+                   leaf(51, 52, 53, 54),
+                   leaf(55, 56, 57, 58),
+                   leaf(59, 60, 61)))),
+        vec(15, 31, 47, 62)),
+      62, 2)
+    let t2 = t.add(62)
+    for (i: 0..62):
+      check: t2.get(i)
+             ~is i
+    for (i: 0..3):
+      check: t.root.get(i) === t2.root.get(i)
+             ~is #true
+    for (i: 0..3):
+      check: t.root.get(3).get(i) === t2.root.get(3).get(i)
+             ~is #true
+
+    check: t2.size
+           ~is t.size + 1
+    check: t2.height
+           ~is t.height
 
 
   let t = Tree()
@@ -265,106 +847,208 @@ module test:
   check: Tree().set(0, 0)
          ~raises ""
 
-  check: Tree(leaf(0, 1, 2), 3, 0, 2).set(0, -1)
-         ~is Tree(leaf(-1, 1, 2), 3, 0, 2)
+  check: Tree(leaf(0, 1, 2), 3, 0).set(0, -1)
+         ~is Tree(leaf(-1, 1, 2), 3, 0)
 
-  let t = Tree(
-           Node(
-             vec(
-               Node(
-                 vec(
-                   leaf(0, 1),
-                   leaf(2, 3))),
-               Node(
-                 vec(
-                   leaf(4, 5),
-                   leaf(6, 7))))),
-           8,
-           2,
-           1)
-  check: t.balanced
-         ~is #true
+  with_shift_inc(1):
+    check: (Tree(
+             Node(
+               vec(Node(vec(leaf(0, 1), leaf(2))),
+                   Node(vec(leaf(3, 4), leaf(5, 6)))),
+               vec(3, 7)
+             ),
+             7, 2)
+            ).add(7)
+           ~is Tree(
+             Node(vec(
+                    Node(
+                      vec(Node(vec(leaf(0, 1), leaf(2))),
+                          Node(vec(leaf(3, 4), leaf(5, 6)))),
+                      vec(3, 7)
+                    ),
+                    Node(
+                      vec(Node(vec(leaf(7)))))),
+                  vec(7, 8)),
+             8, 3)
+    check: Tree(leaf(0), 1, 0).concat(Tree(leaf(1), 1, 0))
+           ~is Tree(leaf(0, 1), 2, 0)
 
-  let t2 = t.set(2, -2)
-  check: t2
-         ~is Tree(
-           Node(
-             vec(
-               Node(
-                 vec(
-                   leaf(0, 1),
-                   leaf(-2, 3))),
-               Node(
-                 vec(
-                   leaf(4, 5),
-                   leaf(6, 7))))),
-           8,
-           2,
-           1)
-  check: t.root.get(1) === t2.root.get(1)
-         ~is #true
-  check: t.root.get(0).get(0) === t2.root.get(0).get(0)
-         ~is #true
+    let t = Tree(
+             Node(
+               vec(
+                 Node(
+                   vec(
+                     leaf(0, 1),
+                     leaf(2, 3))),
+                 Node(
+                   vec(
+                     leaf(4, 5),
+                     leaf(6, 7))))),
+             8,
+             2)
+    check: t.balanced
+           ~is #true
 
-  let t = Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)),
-               3, 1, 1)
-  check: t.balanced
-         ~is #false
-  let t2 = t.set(1, -1)
-  check: t2
-         ~is Tree(Node(vec(leaf(0), leaf(-1, 2)), vec(1, 3)),
-                  3, 1, 1)
-  check: t.root.get(0) === t2.root.get(0)
-         ~is #true
-  check: t.root.sizes === t2.root.sizes
-         ~is #true
+    let t2 = t.set(2, -2)
+    check: t2
+           ~is Tree(
+             Node(
+               vec(
+                 Node(
+                   vec(
+                     leaf(0, 1),
+                     leaf(-2, 3))),
+                 Node(
+                   vec(
+                     leaf(4, 5),
+                     leaf(6, 7))))),
+             8,
+             2)
+    check: t.root.get(1) === t2.root.get(1)
+           ~is #true
+    check: t.root.get(0).get(0) === t2.root.get(0).get(0)
+           ~is #true
 
-  check: Tree().size
-         ~is 0
+    let t = Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)),
+                 3, 1)
+    check: t.balanced
+           ~is #false
+    let t2 = t.set(1, -1)
+    check: t2
+           ~is Tree(Node(vec(leaf(0), leaf(-1, 2)), vec(1, 3)),
+                    3, 1)
+    check: t.root.get(0) === t2.root.get(0)
+           ~is #true
+    check: t.root.sizes === t2.root.sizes
+           ~is #true
 
-  check: Tree().branch_factor
-         ~is 5
+    check: Tree().size
+           ~is 0
          
-  check: Tree(~bf: 2).width
-         ~is 4
+    check: Tree(
+             Node(
+               vec(
+                 Node(
+                   vec(
+                     leaf(0, 1),
+                     leaf(2, 3))),
+                 Node(
+                   vec(
+                     leaf(4, 5),
+                     leaf(6, 7))))),
+             8,
+             2).get(4)
+           ~is 4
 
-  check: Tree(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)), 4, 1, 1).get(1)
-         ~is 1
+    check: Tree(
+             Node(
+               vec(
+                 Node(
+                   vec(
+                     leaf(0, 1),
+                     leaf(2, 3)),
+                   vec(2, 4)),
+                 Node(
+                   vec(
+                     leaf(4, 5),
+                     leaf(6, 7)),
+                   vec(2, 4))),
+               vec(4, 8)),
+             8,
+             2).get(4)
+           ~is 4
 
-  check: Tree(
-           Node(
-             vec(
-               Node(
-                 vec(
-                   leaf(0, 1),
-                   leaf(2, 3))),
-               Node(
-                 vec(
-                   leaf(4, 5),
-                   leaf(6, 7))))),
-           8,
-           2,
-           1).get(4)
-         ~is 4
+  let t1:
+    for values(t = Tree()):
+      each i: 0 .. 2048
+      t.add(i)
 
-  check: Tree(
-           Node(
-             vec(
-               Node(
-                 vec(
-                   leaf(0, 1),
-                   leaf(2, 3)),
-                 vec(2, 4)),
-               Node(
-                 vec(
-                   leaf(4, 5),
-                   leaf(6, 7)),
-                 vec(2, 4))),
-             vec(4, 8)),
-           8,
-           2,
-           1).get(4)
-         ~is 4
+  let t2:
+    def l:
+      for values(t = Tree()):
+        each i: 0 .. 1024
+        t.add(i)
+    def r:
+      for values(t = Tree()):
+        each i: List.iota(1024)
+        t.add(i + 1024)
+    l.concat(r)
+
+  check: t2.root.balanced ~is #false
+         t2.root.get(0).balanced ~is #false
+         t2.root.get(1).balanced ~is #false
+
+  check: for values(balanced = #true):
+           each i: 0..t2.root.get(0).size
+           balanced && t2.root.get(0).get(i).balanced
+         ~is #true
+
+  check: for values(balanced = #true):
+           each i: 0..t2.root.get(1).size
+           balanced && t2.root.get(1).get(i).balanced
+         ~is #true
+
+
+/* helper functions */
+      
+fun radix_of(index :: Int, height :: Int) :~ Int:
+  if height == 0
+  | index bits.and ((1 bits.(<<) shift_inc()) - 1)
+  | (index bits.(>>) (shift_inc() * height)) bits.and shift_mask()
+                      
+fun scan_sizes(sizes, target_index, i = 0) :~ Int:
+  if sizes[i] <= target_index
+  | scan_sizes(sizes, target_index, i + 1)
+  | i
+
+// calculate next branch to take and subindex of `index` along that path
+fun step(node :: Node, index, depth) :~ (NonnegInt, NonnegInt):
+  def branch = scan_sizes(node.sizes, index, radix_of(index, depth))
+  values(branch,
+         if branch == 0
+         | index
+         | index - node.sizes[branch - 1])
+
+// count number of nodes that either have room themselves for another element and/or branch,
+// or one of their right-most descendants has room
+fun copyable_count(node, height):
+  def (_, count):
+    for values(n = node, count = 0):
+      each i: 0 .. height + 1
+      def l = n.size
+      values(if l == 0
+             | n
+             | n.get(l - 1),
+             if l < max_width()
+             | i + 1
+             | count)
+  count
+
+
+//  using `count` returned from `copyable_count`, copy `count` nodes along right-most path of `n`,
+// then insert new element in leaf node or new branch if `count` << `height`
+fun build(n, count, height, el):
+  if count < 2
+  | if height == 0
+    | Node(add_vec(n.children, el))
+    | Node(add_vec(n.children,
+                   new_branch(el, height - 1)))
+  | Node(set_vec(n.children,
+                 n.size - 1,
+                 build(n.get(n.size - 1),
+                       count - 1,
+                       height - 1,
+                       el)),
+         n.sizes && set_vec(n.sizes,
+                            n.sizes.length() - 1,
+                            n.sizes[n.sizes.length() - 1] + 1))
+
+// create a branch of height `height` terminating in a unary leaf node containing `el`
+fun new_branch(el, height):
+  if height == 0
+  | leaf(el)
+  | Node(vec(new_branch(el, height - 1)))
+
 
 
 module test:
@@ -385,55 +1069,59 @@ module test:
   check: new_branch(#'a, 3)
          ~is Node(vec(Node(vec(Node(vec(leaf(#'a)))))))
 
-  check: copyable_count(Node(vec(leaf(0, 1))), 2, 1)
+  check: copyable_count(leaf(0), 0)
          ~is 1
-  check: copyable_count(Node(vec(leaf(0), leaf(1)), vec(1, 2)), 2, 1)
-         ~is 2
-  check: copyable_count(leaf(0), 100, 0)
-         ~is 1
+        
+  with_shift_inc(1):
+    check: copyable_count(Node(vec(leaf(0, 1))), 1)
+           ~is 1
+    check: copyable_count(Node(vec(leaf(0), leaf(1)), vec(1, 2)), 1)
+           ~is 2
+    check: copyable_count(Node(vec(Node(vec(leaf(0, 1), leaf(2, 3))), Node(vec(leaf(4, 5), leaf(6, 7))))),
+                          2)
+           ~is 0
+    check: copyable_count(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)),
+                          1)
+           ~is 0
 
-  check: copyable_count(Node(vec(Node(vec(leaf(0, 1), leaf(2, 3))), Node(vec(leaf(4, 5), leaf(6, 7))))),
-                        2, 2)
-         ~is 0
-
-  check: copyable_count(Node(vec(leaf(0), leaf(1, 2)), vec(1, 3)),
-                        2, 1)
-         ~is 0
-
-  def nd = Node(
-    vec(
-      Node(
-        vec(
-          leaf(0, 1),
-          leaf(2)),
-        vec(2, 3)),
-      Node(
-        vec(
-          leaf(3, 4),
-          leaf(5, 6)))),
-    vec(3, 7))
+    def nd = Node(
+      vec(
+        Node(
+          vec(
+            leaf(0, 1),
+            leaf(2)),
+          vec(2, 3)),
+        Node(
+          vec(
+            leaf(3, 4),
+            leaf(5, 6)))),
+      vec(3, 7))
   
-  check: step(nd, 0, 1, 2)
-         ~is values(0, 0)
-  check: step(nd, 4, 1, 2)
-         ~is values(1, 1)
-  check: step(nd, 3, 1, 2)
-         ~is values(1, 0)
-  check: step(nd, 2, 1, 2)
-         ~is values(0, 2)
+    check: step(nd, 0, 2)
+           ~is values(0, 0)
+    check: step(nd, 4, 2)
+           ~is values(1, 1)
+    check: step(nd, 3, 2)
+           ~is values(1, 0)
+    check: step(nd, 2, 2)
+           ~is values(0, 2)
 
-  check: radix_of(4, 1, 0)
+    check: radix_of(4, 0)
+           ~is 0
+           
+  check: radix_of(0, 1000000)
          ~is 0
-  check: radix_of(0, 32, 1000000)
-         ~is 0
-  check: radix_of(4, 2, 1)
-         ~is 1
-  check: radix_of(2 ^ 5 ^ 4 - 1, 5, 3)
+
+  check: radix_of(2 ^ 5 ^ 4 - 1, 3)
          ~is 31
+
+  with_shift_inc(2):
+    check: radix_of(4, 1)
+           ~is 1
 
   check: scan_sizes(vec(3, 7, 11), 4)
          ~is 1
   check: scan_sizes(vec(), 0)
          ~raises ""
-  check: scan_sizes(vec(32, 63, 95), 64, radix_of(63, 5, 1))
+  check: scan_sizes(vec(32, 63, 95), 64, radix_of(63, 1))
          ~is 2
