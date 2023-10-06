@@ -18,7 +18,9 @@ export:
 /* Array utilities for imitating immutable arrays */
 
 import rhombus/meta open
-import lib("racket/base.rkt") as r
+import lib("racket/base.rkt") as r:
+  rename #{vector-immutable} as vec
+  expose vec
 import lib("racket/vector.rkt") as v:
   rename:
     // TODO remove exposure of unused functions
@@ -34,17 +36,10 @@ import lib("racket/vector.rkt") as v:
 annot.macro 'Vec':
   annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
 
-
-fun vec(args, ...) :: Vec:
-  r.#{vector-immutable}(args, ...)
-
 fun array_to_vec(a :: Array) :: Vec:
   r.#{vector->immutable-vector}(a)
 
 module test:
-  check: vec(1, 2, 3) :: Vec
-         ~is r.#{vector-immutable}(1, 2, 3)
-         
   check:
     1 :: Vec
     ~raises ""
@@ -121,13 +116,25 @@ module test:
 /* convenience utilities */
 
 fun truncate(a :: Array, to_len :: Int) :: Array:
-  def ret = Array.make(to_len)
-  Array.copy_from(ret, 0, a, 0, to_len)
-  ret
+  if a.length() == to_len
+  | a
+  | def ret = Array.make(to_len)
+    Array.copy_from(ret, 0, a, 0, to_len)
+    ret
 
 module test:
   check: truncate(Array(1, 2, 3, 4), 3)
          ~is_now Array(1, 2, 3)
+
+  let a = Array(1, 2, 3)
+  check: truncate(a, 3)
+         ~is a
+
+  check: truncate(vec(1, 2, 3), 2)
+         ~is_now vec(1, 2)
+
+  check: truncate(vec(1, 2, 3), 2) :: Vec
+         ~raises ""
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
