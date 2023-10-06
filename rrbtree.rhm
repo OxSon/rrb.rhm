@@ -79,9 +79,8 @@ class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
     Node(set_vec(children, index, el), sizes)
 
 
-    
-fun leaf(args, ...) :~ Node:
-  Node(vec(args, ...))
+macro 'leaf($args, ...)':
+  'Node(vec($args, ...))'
 
 module test:
   check: leaf(1, 2, 3).first
@@ -535,10 +534,11 @@ module test:
 
 // TODO can we calculate this along the way and get rid of this extra traversal?
 fun calc_height_and_wrap(root :: Node, size :: Int):
-  def (_, height) = for values(node = root, height = 0):
-    each i: 0..
-    final_when !(node.first is_a Node)
-    values(node.first, i)
+  def (_, height):
+    for values(node = root, height = 0):
+      each i: 0..
+      final_when !(node.first is_a Node)
+      values(node.first, i)
     
   Tree(root, size, height)
 
