@@ -81,8 +81,8 @@ class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
     Node(set_vec(children, index, el), sizes)
 
 
-macro 'leaf($args, ...)':
-  'Node(vec($args, ...))'
+macro 'leaf($args)':
+  'Node(vec($args))'
 
 module test:
   check: leaf(1, 2, 3).first
