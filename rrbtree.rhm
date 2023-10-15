@@ -27,6 +27,12 @@ macro 'with_shift_inc($inc): $body':
                   shift_mask: (1 bits.(<<) $inc) - 1 }:
      $body'
 
+macro 'set_params($shift)':
+  'block:
+     shift_inc($shift)
+     max_width(1 bits.(<<) $shift)
+     shift_mask((1 bits.(<<) $shift) - 1)'
+
 module test:
   with_shift_inc(2):
     check: shift_inc() ~is 2
@@ -173,6 +179,38 @@ class Tree(root :: Node,
 
     Tree(new_node,  size,  height)
 
+  // TODO: trees that are a result of this method may not meet invariants, but rebalancing is costly
+  // and future concatenations would restore the invariants due to rebalancing being done on concats.
+  // write some tests showing this
+  method take(pos :: NonnegInt) :~ Tree:
+    cond
+    | pos == 0:
+        Tree()
+    | pos >= size:
+        this
+    | ~else:
+        def new_root = recur take(node = root, index = pos - 1, depth = height):
+          cond
+          | depth == 0:
+              Node(array_to_vec(vec_take(node.children, radix_of(index, 0) + 1)))
+          | node.balanced:
+              def branch_index = radix_of(index, depth)
+              def new_children = vec_take(node.children, branch_index + 1)
+              new_children[branch_index] := take(node.get(branch_index), index, depth - 1)
+              Node(array_to_vec(new_children))
+          | ~else:
+              def (branch_index, subindex) = step(node, index, depth)
+              def new_children = vec_take(node.children, branch_index + 1)
+              def new_sizes = vec_take(node.sizes, branch_index + 1)
+              new_children[branch_index] := take(node.get(branch_index), subindex, depth - 1)
+              new_sizes[branch_index] := index + 1
+              Node(array_to_vec(new_children),
+                   array_to_vec(new_sizes))
+
+        recur squash(node = new_root, new_height = height):
+          if new_root.size == 1 && new_height > 0
+          | squash(new_root.first, new_height - 1)
+          | Tree(node, pos, new_height)
 
   // add `el` to end of vector
   method add(el) :~ Tree:
@@ -187,9 +225,16 @@ class Tree(root :: Node,
       Tree(build(root, count, height, el),
            size + 1,
            height)
+
+  // TODO make efficient
+  method add_all(els :: List) :~ Tree:
+    for values(t = this):
+      each el: els
+      t.add(el)
    
   method split(at :: NonnegInt, side :: Any.of(#'left, #'right, #'l, #'r)) :~ Tree:
     TODO "split"
+
 
   method concat(rhs :: Tree) :~ Tree:
     calc_height_and_wrap(concat_subtree(root,
@@ -199,7 +244,7 @@ class Tree(root :: Node,
                                         #true),
                          size + rhs.size)
 
-  // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time
+  // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
   // rather than traverse once per element of represented vector
   method to_list() :: List:
     for List:
@@ -208,6 +253,7 @@ class Tree(root :: Node,
 
 
 module test:
+  
   check: Tree().split(1, #'l)
          ~raises ""
 
@@ -220,6 +266,39 @@ module test:
 
   check: Tree().add(1).add(2).add(3).to_list()
          ~is [1, 2, 3]
+  check: Tree().add_all(List.iota(32 ^ 3)).take(0)
+         ~is Tree()
+
+  // TODO why do we end up with an empty rightmost child when our 'take' amount is a multiple
+  // of our width?
+  let t = Tree().add_all(List.iota(32 ^ 3))
+  check: t.take(32).height
+         ~is 0
+
+  let t = Tree().add_all(List.iota(32 ^ 3))
+  check: t.take(32 ^ 3) === t
+         ~is #true
+
+         
+  check: Tree().add_all(List.iota(32 ^ 3)).take(1030)
+         ~is Tree().add_all(List.iota(1030))
+
+  with_shift_inc(2):
+    let tl = Tree().add_all(List.iota(15))
+    let tr = Tree().add_all(List.map(List.iota(16),
+                                     fun (x): x + 15))
+    let t = tl.concat(tr)
+
+    check: t.take(17).to_list()
+           ~is List.iota(17)
+
+    check: t.concat(tl).concat(tl).take(15 + 16 + 15 + 15 - 10).to_list()
+           ~is List.iota(15 + 16).append(List.iota(15)).append(List.iota(15 - 10))
+
+
+  check: Tree().add_all([1, 2])
+         ~is Tree().add(1).add(2)
+
 
 fun concat_subtree(left :: Node,
                    height_l :: Int,
@@ -427,7 +506,7 @@ fun distribute(plan :: Array,
                node_idx = 0) :: Array:
   cond
   | target_node_len >= count:
-      truncate(plan, count)
+      vec_take(plan, count)
   | plan[node_idx] >= max_width() - max_error() / 2:
       distribute(plan, target_node_len, count, remaining, node_idx + 1)
   | remaining > 0:
