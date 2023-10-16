@@ -12,13 +12,13 @@ fun instantiate_params(shift_increment :: Int):
     /* shift increment,
        max width of a node,
        mask for radix search bit stuff,
-       max tolerated extra linear search steps for relaxed indexing
     */
     Parameter.make(shift_increment),
     Parameter.make(1 bits.(<<) shift_increment),
     Parameter.make((1 bits.(<<) shift_increment) - 1))
   
 def (shift_inc, max_width, shift_mask) = instantiate_params(5)
+// max tolerated extra linear search steps for relaxed indexing
 def max_error = Parameter.make(2)
 
 macro 'with_shift_inc($inc): $body':
@@ -179,7 +179,7 @@ class Tree(root :: Node,
 
     Tree(new_node,  size,  height)
 
-  // TODO: trees that are a result of this method may not meet invariants, but rebalancing is costly
+  // trees that are a result of this method may not meet invariants, but rebalancing is costly
   // and future concatenations would restore the invariants due to rebalancing being done on concats.
   // write some tests showing this
   method take(pos :: NonnegInt) :~ Tree:
