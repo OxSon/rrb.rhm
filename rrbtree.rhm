@@ -1072,7 +1072,7 @@ module test:
       
 fun radix_of(index :: Int, height :: Int) :~ Int:
   if height == 0
-  | index bits.and ((1 bits.(<<) shift_inc()) - 1)
+  | index bits.and shift_mask()
   | (index bits.(>>) (shift_inc() * height)) bits.and shift_mask()
                       
 fun scan_sizes(sizes, target_index, i = 0) :~ Int:
@@ -1090,6 +1090,7 @@ fun step(node :: Node, index, depth) :~ (NonnegInt, NonnegInt):
 
 // count number of nodes that either have room themselves for another element and/or branch,
 // or one of their right-most descendants has room
+// TODO very large trees (larger than 32^3) tend to go OOM in this function
 fun copyable_count(node, height):
   def (_, count):
     for values(n = node, count = 0):
