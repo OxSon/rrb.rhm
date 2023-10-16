@@ -211,6 +211,32 @@ class Tree(root :: Node,
           if new_root.size == 1 && new_height > 0
           | squash(new_root.first, new_height - 1)
           | Tree(node, pos, new_height)
+        
+
+  method drop(pos :: NonnegInt) :~ Tree:
+    cond
+    | pos == 0:
+        this
+    | pos >= size:
+        Tree()
+    | ~else:
+        def new_root = recur drop(node = root, index = pos, depth = height):
+          cond
+          | depth == 0:
+              Node(array_to_vec(vec_drop(node.children, radix_of(index, 0))))
+          | node.balanced:
+              def branch_index = radix_of(index, depth)
+              def new_children = vec_drop(node.children, branch_index)
+              new_children[0] := drop(node.get(branch_index), index, depth - 1)
+              // TODO: we very likely need to set up a size table in our new node
+              Node(array_to_vec(new_children))
+          | ~else:
+              TODO ""
+
+        recur squash(node = new_root, new_height = height):
+          if new_root.size == 1 && new_height > 0
+          | squash(new_root.first, new_height - 1)
+          | Tree(node, size - pos, new_height)
 
   // add `el` to end of vector
   method add(el) :~ Tree:
@@ -226,7 +252,6 @@ class Tree(root :: Node,
            size + 1,
            height)
 
-  // TODO make efficient
   method add_all(els :: List) :~ Tree:
     for values(t = this):
       each el: els
@@ -269,8 +294,6 @@ module test:
   check: Tree().add_all(List.iota(32 ^ 3)).take(0)
          ~is Tree()
 
-  // TODO why do we end up with an empty rightmost child when our 'take' amount is a multiple
-  // of our width?
   let t = Tree().add_all(List.iota(32 ^ 3))
   check: t.take(32).height
          ~is 0
