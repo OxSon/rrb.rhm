@@ -181,7 +181,7 @@ class Tree(root :: Node,
 
   // trees that are a result of this method may not meet invariants, but rebalancing is costly
   // and future concatenations would restore the invariants due to rebalancing being done on concats.
-  // write some tests showing this
+  // TODO write some tests showing this
   method take(pos :: NonnegInt) :~ Tree:
     cond
     | pos == 0:
