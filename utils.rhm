@@ -18,9 +18,11 @@ export:
 /* Array utilities for imitating immutable arrays */
 
 import rhombus/meta open
+
 import lib("racket/base.rkt") as r:
   rename #{vector-immutable} as vec
   expose vec
+  
 import lib("racket/vector.rkt") as vector:
   rename:
     // TODO remove exposure of unused functions
@@ -34,12 +36,19 @@ import lib("racket/vector.rkt") as vector:
     vec_drop_right
     vec_split
     vec_take
+
+import lib("racket/unsafe/ops.rkt") as unsafe:
+  rename:
+    #{unsafe-vector*->immutable-vector!} as freeze_vec
+
+  expose:
+    freeze_vec
   
 annot.macro 'Vec':
   annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
 
 fun array_to_vec(a :: Array) :: Vec:
-  r.#{vector->immutable-vector}(a)
+  unsafe.freeze_vec(a)
 
 module test:
   check:
@@ -57,7 +66,7 @@ module test:
          ~is vec(1, 2, 3)
 
 fun copy_vec(v :: Vec) :: Vec:
-  r.#{vector->immutable-vector}(Array.copy(v))
+  unsafe.freeze_vec(Array.copy(v))
 
 module test:
   let v1 = vec(1, 2, 3)
@@ -84,7 +93,7 @@ fun add_vec(v :: Vec, el) :: Vec:
   def ret = Array.make(v.length() + 1)
   Array.copy_from(ret, 0, v)
   ret[v.length()] := el
-  r.#{vector->immutable-vector}(ret)
+  unsafe.freeze_vec(ret)
 
 
 module test:
@@ -94,7 +103,7 @@ module test:
 fun set_vec(v :: Vec, idx :: NonnegInt, el) :: Vec:
   def ret = Array.copy(v)
   ret[idx] := el
-  r.#{vector->immutable-vector}(ret)
+  unsafe.freeze_vec(ret)
   
 
 module test:
@@ -102,7 +111,7 @@ module test:
          ~is vec(1, -1, 3)
 
 fun append_vec(vec0, ...) :: Vec:
-  r.#{vector->immutable-vector}(vector.#{vector-append}(vec0, ...))
+  unsafe.freeze_vec(vector.#{vector-append}(vec0, ...))
 
 module test:
   check: append_vec(vec(1, 2, 3), vec(4, 5))
