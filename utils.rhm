@@ -14,6 +14,7 @@ export:
   vec_drop
   vec_drop_right
   vec_split
+  
 
 /* Array utilities for imitating immutable arrays */
 
@@ -133,6 +134,12 @@ operator base ^ exp:
                   
   math.expt(base, exp)
 
+macro 'if_not $condition ...:
+         $do':
+  'if !($condition ...)
+   | $do
+   | #void'
+  
 
 module test:
   check: TODO "foo"
