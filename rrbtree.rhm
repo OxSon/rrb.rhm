@@ -257,10 +257,17 @@ class Tree(root :: Node,
           | ~else:
               TODO ""
 
-        recur squash(node = new_root, new_height = height):
-          if new_root.size == 1 && new_height > 0
-          | squash(new_root.first, new_height - 1)
-          | Tree(node, size - pos, new_height)
+        def t:
+          recur squash(node = new_root, new_height = height):
+            if node.size == 1 && new_height > 0
+            | squash(node.first, new_height - 1)
+            | Tree(node, size - pos, new_height)
+
+        // TODO explain
+        if t.height > 1 && t.root.sizes
+        | def sizes = set_vec(t.root.sizes, t.root.size - 1, t.size)
+          Tree(Node(t.root.children, sizes), t.size, t.height) 
+        | t
 
   // add `el` to end of vector
   method add(el) :~ Tree:
