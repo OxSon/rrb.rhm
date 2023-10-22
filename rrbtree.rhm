@@ -638,10 +638,20 @@ module test:
     let t:
       Tree().add_all(List.iota(4)).concat(Tree().add_all(List.map(List.iota(17),
                                                                   fun (x): x + 4)))
-      //TODO: this fails because the concat_plan generated is faulty, check it against
+      //TODO: tese fail because the concat_plan generated is faulty, check it against
       // other implementations (clojure, l'orange C)
     check: t.concat(t).to_list()
            ~is List.iota(21).append(List.iota(21))
+    check: t.add(1).concat(t).to_list()
+           ~is List.iota(21).append([1]).append(List.iota(21))
+
+    // TODO but these don't fail because .... reasons?
+    check: t.concat(Tree().add(1)).concat(t).to_list()
+           ~is List.iota(21).append([1]).append(List.iota(21))
+    check: Tree().add(1).concat(t).concat(t).to_list()
+           ~is [1].append(List.iota(21)).append(List.iota(21))
+    check: t.add_all(List.iota(4)).concat(t).to_list()
+           ~is List.iota(21).append(List.iota(4)).append(List.iota(21))
     
 
   let left = vec(leaf(1, 2, 3, 4),
