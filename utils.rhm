@@ -144,6 +144,16 @@ macro 'if_not $condition ...:
 module test:
   check: TODO "foo"
          ~raises "foo"
+         
+  fun inv(x :: Int):
+    if_not x == 0:
+      1 / x
+    
+  check: inv(2)
+         ~is 1/2 
+    
+  check: inv(0)
+         ~is #void
 
   check: 2 ^ 3
          ~is 8
