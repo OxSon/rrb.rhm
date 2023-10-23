@@ -222,40 +222,53 @@ class Tree(root :: Node,
     | ~else:
         def new_root = recur drop(node = root, index = pos, depth = height):
           cond
+          | radix_of(index, depth) >= node.size:
+              error(#'drop, "(index=" +& index +& ") >= (size=" +& node.size +& "): node=" +& node)
+              #false // TODO does thi sever happen?
           | depth == 0:
               Node(array_to_vec(vec_drop(node.children, radix_of(index, 0))))
           | node.balanced:
               def branch_index = radix_of(index, depth)
               def new_children = vec_drop(node.children, branch_index)
               def new_child = drop(node.get(branch_index), index, depth - 1)
+              
               if !new_child
               | error(#'drop, "new_child == #false") // TODO debugging
               | #void
+                
               new_children[0] := new_child
-              // TODO: we absolutely need to set up a size table in our new node
               def size0:
                 if (!new_child || depth == 1 || new_child.balanced)
                 | (1 bits.(<<) (depth * shift_inc())) - radix_of(index, depth - 1)
                 | new_child.sizes[new_child.size - 1]
               def new_len:
-                if !new_child
+                if !new_child // TODO never happens?
                 | node.size - branch_index - 1
                 | node.size - branch_index    
               def step = 1 bits.(<<) (depth * shift_inc())
               def new_sizes = Array.make(new_len)
               
               for (i: 0 .. new_sizes.length()):
-                new_sizes[i] := (size0 + i * step)// - ((node.size - new_len) * max_width())
-
-              
-              if #false//new_len > 1
-              | new_sizes[new_len - 1] := (node.size * max_width()) - index
-              | #void
+                new_sizes[i] := (size0 + i * step)
                 
               Node(array_to_vec(new_children),
                    array_to_vec(new_sizes))
           | ~else:
-              TODO ""
+              def (branch_index, subindex) = step(node, index, depth)
+              def new_children = vec_drop(node.children, branch_index)
+              def new_sizes = for Array:
+                each i: branch_index .. node.sizes.length()
+                node.sizes[i] - index // if depth > 1 | pos | branch_index
+                //vec_drop(node.sizes, branch_index)
+              def new_child = drop(node.get(branch_index), subindex, depth - 1)
+              
+              if !new_child
+              | error(#'drop, "new_child == #false") // TODO debugging
+              | #void
+                
+              new_children[0] := new_child  
+              Node(array_to_vec(new_children),
+                   array_to_vec(new_sizes))
 
         def t:
           recur squash(node = new_root, new_height = height):
@@ -268,6 +281,7 @@ class Tree(root :: Node,
         | def sizes = set_vec(t.root.sizes, t.root.size - 1, t.size)
           Tree(Node(t.root.children, sizes), t.size, t.height) 
         | t
+          
 
   // add `el` to end of vector
   method add(el) :~ Tree:
@@ -293,12 +307,17 @@ class Tree(root :: Node,
 
 
   method concat(rhs :: Tree) :~ Tree:
-    calc_height_and_wrap(concat_subtree(root,
-                                        height,
-                                        rhs.root,
-                                        rhs.height,
-                                        #true),
-                         size + rhs.size)
+    cond
+    | size == 0: rhs
+    | rhs.size == 0: this
+    | ~else:
+        calc_height_and_wrap(
+          concat_subtree(root,
+                         height,
+                         rhs.root,
+                         rhs.height,
+                         #true),
+          size + rhs.size)
 
   // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
   // rather than traverse once per element of represented vector
@@ -313,6 +332,7 @@ fun mk_leaf(seq :: Sequence) :: Node:
            each val: seq
            val))
 
+// TODO delete
 fun helpme():
   set_params(2)
   def node:
@@ -382,7 +402,7 @@ fun concat_subtree(left :: Node,
                    height_l :: Int,
                    right :: Node,
                    height_r :: Int,
-                   top :: Boolean = #false) :~ Node: // TODO new height too? can we determine that before calling? i don tthink so?
+                   top :: Boolean) :~ Node: // TODO new height too? can we determine that before calling? i don tthink so?
   cond
   /* only trees of the same height can be concatenated */
   | height_l > height_r:
@@ -390,7 +410,8 @@ fun concat_subtree(left :: Node,
                 concat_subtree(left.last,
                                height_l - 1,
                                right,
-                               height_r),
+                               height_r,
+                               #false),
                 #false,
                 height_l,
                 top)
@@ -399,7 +420,8 @@ fun concat_subtree(left :: Node,
                 concat_subtree(left,
                                height_l,
                                right.first,
-                               height_r - 1),
+                               height_r - 1,
+                               #false),
                 right,
                 height_r,
                 top)
@@ -414,7 +436,8 @@ fun concat_subtree(left :: Node,
                 concat_subtree(left.last,
                                height_l - 1,
                                right.first,
-                               height_r - 1),
+                               height_r - 1,
+                               #false),
                 right,
                 height_l,
                 top)
@@ -444,7 +467,7 @@ fun rebalance(left :: (Node || False),
               top :: Boolean) :~ Node:
   def all_slots = merge_nodes(left, center, right)
   def plan = concat_plan(all_slots)
-  def rebalanced_slots = exec_concat_plan(all_slots, plan)
+  def rebalanced_slots = exec_concat_plan(all_slots, plan, height)
 
   cond
   | rebalanced_slots.length() <= max_width() && !top:
@@ -577,6 +600,7 @@ module test:
              ~is_now Array(3, 4, 2)
              
 
+// tODO: potential bug source, `distribute` mutates `plan
 fun distribute(plan :: Array,
                target_node_len :: Int,
                count :: Int,
@@ -594,7 +618,7 @@ fun distribute(plan :: Array,
       distribute(plan,
                  target_node_len,
                  count,
-                 remaining + plan[node_idx + 1] - plan[node_idx],
+                 remaining + plan[node_idx + 1] - min_size,
                  node_idx + 1)
   | ~else:
       for (j: node_idx .. count - 1):
@@ -609,6 +633,17 @@ fun distribute(plan :: Array,
                  node_idx - 1)
       
 module test:
+  // TODO move this test to more sensible spot
+  with_shift_inc(2):
+    let t:
+      Tree().add_all(List.iota(4)).concat(Tree().add_all(List.map(List.iota(17),
+                                                                  fun (x): x + 4)))
+      //TODO: this fails because the concat_plan generated is faulty, check it against
+      // other implementations (clojure, l'orange C)
+    check: t.concat(t).to_list()
+           ~is List.iota(21).append(List.iota(21))
+    
+
   let left = vec(leaf(1, 2, 3, 4),
                  leaf(5, 6))
   let right = vec(leaf(7, 8, 9),
@@ -629,15 +664,11 @@ module test:
                         8,
                         1)
              ~is_now Array(4, 4, 4, 4, 4, 4, 2)
-// TODO
-         /*
-  check: concat_plan(slots, width, 3)
-         ~is Array(4,
-         */
 
 
 fun exec_concat_plan(slots :: Vec,
-                     plan :: (Array || False)) :: Vec:
+                     plan :: (Array || False),
+                     height :: Int) :: Vec:
   if !plan
   | slots
   | def flattened:
@@ -645,14 +676,18 @@ fun exec_concat_plan(slots :: Vec,
         each node: slots
         each child: node.children
         child
-    // TODO use a conslist and iterate backwards here?    
+    // TODO use a conslist and iterate backwards here?
+    // or TODO: use for Array ... ? avoid copying vec every iteration?
     def (_, new_slots):
       for values(sum = 0, v = vec()):
         each i: 0..plan.length()
         values(sum + plan[i],
-               add_vec(v, Node(for values(v = vec()):
-                                 each j: sum .. sum + plan[i]
-                                 add_vec(v, flattened[j]))))
+               add_vec(v,
+                       // TODO set sizes here?
+                       set_sizes(for values(v = vec()):
+                                   each j: sum .. sum + plan[i]
+                                   add_vec(v, flattened[j]),
+                                 height - 1)))
     new_slots
 
 module test:
@@ -662,7 +697,8 @@ module test:
                               leaf(10, 11),
                               leaf(12, 13),
                               leaf(14, 15, 16)),
-                          Array(4, 4, 3, 2, 3))
+                          Array(4, 4, 3, 2, 3),
+                          1)
          ~is vec(leaf(1, 2, 3, 4),
                  leaf(5, 6, 7, 8),
                  leaf(9, 10, 11),
@@ -673,12 +709,13 @@ module test:
                               leaf(3),
                               leaf(4, 5, 6, 7),
                               leaf(8, 9)),
-                          Array(3, 4, 2))
+                          Array(3, 4, 2),
+                          1)
          ~is vec(leaf(1, 2, 3),
                  leaf(4, 5, 6, 7),
                  leaf(8, 9))
 
-  check: exec_concat_plan(vec(leaf(1, 2), leaf(3, 4)), #false)
+  check: exec_concat_plan(vec(leaf(1, 2), leaf(3, 4)), #false,1)
          ~is vec(leaf(1, 2), leaf(3, 4))
 
   check: exec_concat_plan(vec(
@@ -686,20 +723,22 @@ module test:
                             Node(vec(leaf(5), leaf(6), leaf(7), leaf(8))),
                             Node(vec(leaf(9))),
                             Node(vec(leaf(10), leaf(11)))),
-                          Array(4, 4, 3))
+                          Array(4, 4, 3), 2)
          ~is vec(Node(vec(leaf(1), leaf(2), leaf(3), leaf(4))),
                  Node(vec(leaf(5), leaf(6), leaf(7), leaf(8))),
                  Node(vec(leaf(9), leaf(10), leaf(11))))
 
 // TODO can we calculate this along the way and get rid of this extra traversal?
 fun calc_height_and_wrap(root :: Node, size :: Int):
-  def (_, height):
-    for values(node = root, height = 0):
-      each i: 0..
-      final_when !(node.first is_a Node)
-      values(node.first, i)
+  if root.size == 0
+  | Tree(root, 0, 0)
+  | def (_, height):
+      for values(node = root, height = 0):
+        each i: 0..
+        final_when !(node.first is_a Node)
+        values(node.first, i)
     
-  Tree(root, size, height)
+    Tree(root, size, height)
 
 module test:
   check: calc_height_and_wrap(leaf(1, 2, 3), 3)
@@ -721,6 +760,8 @@ fun size_subtree(node :: Node, height :: Int):
       node.children.length()
   | node.sizes:
       node.sizes[node.size - 1]
+  // TODO: big bug! We're calling this to set sizes and then assuming we can
+  // rely on the presence of sizes!
   | ~else: // if sizes is #false, then we know we have a leftwise-dense subtree
       ((node.size - 1) bits.(<<) (height * shift_inc())) + size_subtree(node.last, height - 1)
 
