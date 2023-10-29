@@ -301,9 +301,16 @@ class Tree(root :: Node,
     for values(t = this):
       each el: els
       t.add(el)
-   
-  method split(at :: NonnegInt, side :: Any.of(#'left, #'right, #'l, #'r)) :~ Tree:
-    TODO "split"
+
+  // TODO can't annotate multiple return values ?
+  method split(at :: NonnegInt): // :~ (Tree, Tree)
+    values(split_left(at), split_right(at))
+
+  method split_left(at :: NonnegInt) :~ Tree:
+    take(size - at)
+
+  method split_right(at :: NonnegInt) :~ Tree:
+    drop(at)
 
 
   method concat(rhs :: Tree) :~ Tree:
@@ -558,6 +565,7 @@ module test:
          ~is leaf(1, 2, 3, 4)
 
 
+// TODO redesign this to be less imperative?
 /* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
 fun concat_plan(slots :: Vec) :: Array || False:
   def plan = Array.make(slots.length())
@@ -574,15 +582,18 @@ fun concat_plan(slots :: Vec) :: Array || False:
   if target_node_len >= plan.length()
   | #false
   | // tODO can i take this out now that its part of distribute's recurison?
+    #//
     def starting_node:
       for values(i = 0):
         break_when plan[i] < max_width() - max_error() / 2
         i + 1
-    distribute(plan,
+    #//
+    distribute(plan.copy(), // TODO get rid of this copy?
                target_node_len,
                plan.length(),
-               plan[starting_node],
-               starting_node)
+               plan[0],
+               0)
+    dist(plan.copy(), target_node_len, plan.length())
 
 module test:
   let slots = vec(leaf(1, 2),
@@ -609,7 +620,8 @@ fun distribute(plan :: Array,
   cond
   | target_node_len >= count:
       vec_take(plan, count)
-  | plan[node_idx] >= max_width() - max_error() / 2:
+  | plan[node_idx] > max_width() - 1:
+    //plan[node_idx] > max_width() - max_error() / 2:
       distribute(plan, target_node_len, count, remaining, node_idx + 1)
   | remaining > 0:
       def min_size = math.min(remaining + plan[node_idx + 1], max_width())
@@ -621,6 +633,7 @@ fun distribute(plan :: Array,
                  remaining + plan[node_idx + 1] - min_size,
                  node_idx + 1)
   | ~else:
+      // TODO this shuffling might not be happening every time  it should be happening
       for (j: node_idx .. count - 1):
         /* we've removed a node (conceptually) at this point,
         so move nodes to the right of current node left by one */
@@ -631,15 +644,67 @@ fun distribute(plan :: Array,
                  plan[node_idx - 1],
                  /* we must check the last node we distributed once more, it can still have too few children */
                  node_idx - 1)
+
+fun dist(plan :: Array,
+         target :: Int,
+         count :: Int,
+         node_idx :: Int = 0) :: Array:
+  // TODO debugging
+  #//
+  println("dist(plan=" +& plan
+            +& ", target=" +& target
+            +& ", count=" +& count
+            +& ", i=" +& node_idx
+            +& ")")
+
+  if target >= count:
+  | vec_take(plan, count)
+  | let i = short_node(plan, node_idx)
+    let (i, r):
+      // TODO better way to do this?
+      for values(i = short_node(plan, node_idx),
+                 r = plan[i]):
+        each _: 0..
+       // println("in loop: i=" +& i +& ", r=" +& r +& "...")
+        final_when r == 0
+        def min_size = math.min(r + plan[i + 1], max_width())
+        plan[i] := min_size
+        values(i + 1, r + plan[i + 1] - min_size)
+
+    /* we've removed a node (conceptually) at this point,
+    so move nodes to the right of current node left by one */
+    for (j: i .. count - 1):
+      plan[j] := plan[j + 1]
+
+    dist(plan, target, count - 1, i - 1)
+
+fun short_node(plan :: Array, i :: Int) :: Int:
+  if plan[i] < max_width() - 1
+  | i
+  | short_node(plan, i + 1)
       
 module test:
+  with_shift_inc(2):
+    check: short_node(Array(4, 1, 4, 1, 1, 1), 0)
+           ~is 1
   // TODO move this test to more sensible spot
+
+  //TODO: tese fail because the concat_plan generated is faulty, check it against
+  // other implementations (clojure, l'orange C)
+
+  // TODO NOTE: l'orange C comes up with the concat plan [4, 4, 2, 1, 1],
+  // ours comes up with [4, 4, 4, 2, 1], we have a bug!
   with_shift_inc(2):
     let t:
       Tree().add_all(List.iota(4)).concat(Tree().add_all(List.map(List.iota(17),
                                                                   fun (x): x + 4)))
-      //TODO: tese fail because the concat_plan generated is faulty, check it against
-      // other implementations (clojure, l'orange C)
+    let left = t.root
+    let right = t.root
+    let mid = concat_subtree(t.root.last, 1, t.root.first, 1, #false)
+    let slots = merge_nodes(left, mid, right)
+    check: concat_plan(slots)
+           ~is_now Array(4, 4, 2, 1, 1)
+
     check: t.concat(t).to_list()
            ~is List.iota(21).append(List.iota(21))
     check: t.add(1).concat(t).to_list()
@@ -740,15 +805,13 @@ module test:
 
 // TODO can we calculate this along the way and get rid of this extra traversal?
 fun calc_height_and_wrap(root :: Node, size :: Int):
-  if root.size == 0
-  | Tree(root, 0, 0)
-  | def (_, height):
-      for values(node = root, height = 0):
-        each i: 0..
-        final_when !(node.first is_a Node)
-        values(node.first, i)
+  def (_, height):
+    for values(node = root, height = 0):
+      each i: 0..
+      final_when !(node.first is_a Node)
+      values(node.first, i)
     
-    Tree(root, size, height)
+  Tree(root, size, height)
 
 module test:
   check: calc_height_and_wrap(leaf(1, 2, 3), 3)
