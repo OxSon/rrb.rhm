@@ -5,8 +5,7 @@ export:
   ^
   Vec
   vec
-  array_to_vec // TODO get rid of this, shouldn't need it in the end i think
-  copy_vec
+  unsafe
   add_vec
   set_vec
   vec_take
@@ -14,9 +13,10 @@ export:
   vec_drop
   vec_drop_right
   vec_split
+  if_not
   
 
-/* Array utilities for imitating immutable arrays */
+/* Array utilities for imitating COW immutable arrays */
 
 import rhombus/meta open
 
@@ -38,56 +38,19 @@ import lib("racket/vector.rkt") as vector:
     vec_split
     vec_take
 
-import lib("racket/unsafe/ops.rkt") as unsafe:
-  rename:
-    #{unsafe-vector*->immutable-vector!} as freeze_vec
+  
+namespace unsafe: 
+  import lib("racket/unsafe/ops.rkt") as unsafe:
+    rename:
+      #{unsafe-vector*->immutable-vector!} as freeze_vec
 
-  expose:
-    freeze_vec
+    expose:
+      freeze_vec
+      
+  export freeze_vec
   
 annot.macro 'Vec':
   annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
-
-fun array_to_vec(a :: Array) :: Vec:
-  unsafe.freeze_vec(a)
-
-module test:
-  check:
-    1 :: Vec
-    ~raises ""
-
-  check:
-    Array(1, 2, 3) :: Vec
-    ~raises ""
-
-  check: vec(1, 2, 3)[0] := -1
-         ~raises ""
-
-  check: array_to_vec(Array(1, 2, 3)) :: Vec
-         ~is vec(1, 2, 3)
-
-fun copy_vec(v :: Vec) :: Vec:
-  unsafe.freeze_vec(Array.copy(v))
-
-module test:
-  let v1 = vec(1, 2, 3)
-  let v2 = copy_vec(v1)
-  check:
-    v1 ~is v2
-    v1 === v2 ~is #false
-    
-module test:
-  let v = vec(1, 2, 3)
-  let v2 = copy_vec(v)
-
-  check: v2[0] := -1
-         ~raises ""
-
-  check: v
-         ~is v2
-
-  check: v === v2
-         ~is #false
 
 
 fun add_vec(v :: Vec, el) :: Vec:
@@ -97,39 +60,20 @@ fun add_vec(v :: Vec, el) :: Vec:
   unsafe.freeze_vec(ret)
 
 
-module test:
-  check: add_vec(vec(1, 2, 3), 4)
-         ~is vec(1, 2, 3, 4)
-
 fun set_vec(v :: Vec, idx :: NonnegInt, el) :: Vec:
   def ret = Array.copy(v)
   ret[idx] := el
-  unsafe.freeze_vec(ret)
-  
+  unsafe.freeze_vec(ret)  
 
-module test:
-  check: set_vec(vec(1, 2, 3), 1, -1)
-         ~is vec(1, -1, 3)
 
 fun append_vec(vec0, ...) :: Vec:
   unsafe.freeze_vec(vector.#{vector-append}(vec0, ...))
-
-module test:
-  check: append_vec(vec(1, 2, 3), vec(4, 5))
-         ~is vec(1, 2, 3, 4, 5)
-
-  check: append_vec(vec(#'a, #'b, #'c),
-                    vec(1, 2, 3),
-                    vec("the industrial revolution and its consequences..."))
-         ~is vec(#'a, #'b, #'c,
-                 1, 2, 3,
-                 "the industrial revolution and its consequences...")
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
 
 operator base ^ exp:
-  ~stronger_than: * / + - <= >= == >> << and
+  ~stronger_than: * / + - <= >= == >> << and ..
   ~associativity: ~right
                   
   math.expt(base, exp)
@@ -140,8 +84,38 @@ macro 'if_not $condition ...:
    | $do
    | #void'
   
+module test:  
+  check:
+    1 :: Vec
+    ~raises ""
 
-module test:
+  check:
+    Array(1, 2, 3) :: Vec
+    ~raises ""
+
+  check: set_vec(vec(1, 2, 3), 1, -1)
+         ~is vec(1, -1, 3)
+
+
+  check: vec(1, 2, 3)[0] := -1
+         ~raises ""
+
+  check: unsafe.freeze_vec(Array(1, 2, 3)) :: Vec
+         ~is vec(1, 2, 3)
+
+  check: add_vec(vec(1, 2, 3), 4)
+         ~is vec(1, 2, 3, 4)
+
+  check: append_vec(vec(1, 2, 3), vec(4, 5))
+         ~is vec(1, 2, 3, 4, 5)
+
+  check: append_vec(vec(#'a, #'b, #'c),
+                    vec(1, 2, 3),
+                    vec("the industrial revolution and its consequences..."))
+         ~is vec(#'a, #'b, #'c,
+                 1, 2, 3,
+                 "the industrial revolution and its consequences...")
+
   check: TODO "foo"
          ~raises "foo"
          
