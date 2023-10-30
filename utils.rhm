@@ -1,7 +1,6 @@
 #lang rhombus
 
 export:
-  TODO
   ^
   Vec
   vec
@@ -16,7 +15,7 @@ export:
   if_not
   
 
-/* Array utilities for imitating COW immutable arrays */
+/* Array utilities for imitating COW immutable indexed sequences */
 
 import rhombus/meta open
 
@@ -26,7 +25,6 @@ import lib("racket/base.rkt") as r:
   
 import lib("racket/vector.rkt") as vector:
   rename:
-    // TODO remove exposure of unused functions
     #{vector-drop} as vec_drop
     #{vector-drop-right} as vec_drop_right
     #{vector-split-at} as vec_split
