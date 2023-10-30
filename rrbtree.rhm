@@ -191,7 +191,7 @@ class Tree(root :: Node,
               new_children[0] := new_child
               
               def size0:
-                if (!new_child || depth == 1 || new_child.balanced)
+                if depth == 1 || new_child.balanced
                 | (1 bits.(<<) (depth * shift_inc())) - radix_of(index, depth - 1)
                 | new_child.sizes[new_child.size - 1]
               def new_len = node.size - branch_index    
