@@ -48,7 +48,7 @@ module test:
   - a node is balanced if it is leftwise dense or fully dense (note that leaves are always at least leftwise dense)
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
-class Node(children :: Vec = vec(), sizes :: Vec || False = #false):
+class Node(children :: Vec = vec(), sizes :: maybe(Vec) = #false):
   private implements Equatable
  
   property balanced:
@@ -144,7 +144,7 @@ class Tree(root :: Node,
   // TODO write some tests showing this
   method take(pos :: NonnegInt) :~ Tree:
     cond
-    | pos == 0:
+    | pos <= 0:
         Tree()
     | pos >= size:
         this
@@ -175,7 +175,7 @@ class Tree(root :: Node,
 
   method drop(pos :: NonnegInt) :~ Tree:
     cond
-    | pos == 0:
+    | pos <= 0:
         this
     | pos >= size:
         Tree()
@@ -261,21 +261,13 @@ class Tree(root :: Node,
       t.add(el)
 
   // TODO can't annotate multiple return values ?
-  method split(at :: NonnegInt, ~side = #false): // :~ (Tree, Tree)
-    match side
-    | #'l || #'left:
-        split_left(at)
-    | #'r || #'right:
-        split_right(at)
-    | _:
-        values(split_left(at), split_right(at))
-
-  method split_left(at :: NonnegInt) :~ Tree:
-    take(size - at)
-
-  method split_right(at :: NonnegInt) :~ Tree:
-    drop(at)
-
+  method split(at :: NonnegInt): // :~ (Tree, Tree)
+    cond
+    | at == 0: values(Tree(), this)
+    | at == size: values(this, Tree())
+    | at > 0 && at < size: values(take(at), drop(at))
+    | ~else: error(#'split, "invalid index")
+    
 
   method concat(rhs :: Tree) :~ Tree:
     cond
@@ -302,7 +294,7 @@ fun concat_subtree(left :: Node,
                    height_l :: Int,
                    right :: Node,
                    height_r :: Int,
-                   top :: Boolean) :~ Node: // TODO new height too? can we determine that before calling? i don tthink so?
+                   top :: Boolean) :~ Node:
   cond
   /* only trees of the same height can be concatenated */
   | height_l > height_r:
@@ -332,7 +324,6 @@ fun concat_subtree(left :: Node,
   | ~else:
       /* two internal nodes with same height */
       rebalance(left,
-                // TODO inline call to rebalance here when height > 1, since we'll end up here again?
                 concat_subtree(left.last,
                                height_l - 1,
                                right.first,
@@ -342,9 +333,9 @@ fun concat_subtree(left :: Node,
                 height_l,
                 top)
 
-fun rebalance(left :: (Node || False),
+fun rebalance(left :: maybe(Node),
               center :: Node,
-              right :: (Node || False),
+              right :: maybe(Node),
               height :: Int,
               top :: Boolean) :~ Node:
   def all_slots = merge_nodes(left, center, right)
@@ -353,9 +344,9 @@ fun rebalance(left :: (Node || False),
 
   cond
   | rebalanced_slots.length() <= max_width() && !top:
-      Node(vec(set_sizes(rebalanced_slots, height)))
+      Node(vec(set_sizes(unsafe.freeze_vec(rebalanced_slots), height)))
   | rebalanced_slots.length() <= max_width():
-      set_sizes(rebalanced_slots, height)
+      set_sizes(unsafe.freeze_vec(rebalanced_slots), height)
   | ~else:
       def (new_left, new_right) = vec_split(rebalanced_slots, max_width())
       set_sizes(vec(set_sizes(unsafe.freeze_vec(new_left), height),
@@ -364,7 +355,7 @@ fun rebalance(left :: (Node || False),
                    
 
 /* merge all children except for the rightmost in `left` and leftmost in `right` */
-fun merge_nodes(left :: (Node || False), center :: Node, right :: (Node || False)) :: Vec:
+fun merge_nodes(left :: maybe(Node), center :: Node, right :: maybe(Node)) :: Vec:
   // TODO i dont really need these to be 'Vec's i.e. immutable, would need to import #{vector-append}
   // rather than (in addition to?) my append_vec wrapper
   
@@ -390,7 +381,7 @@ fun set_sizes(children :: Vec, height :: Int) :: Node:
 
 // TODO redesign this to be less imperative?
 /* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
-fun concat_plan(slots :: Vec) :: Array || False:
+fun concat_plan(slots :: Vec) :: maybe(Array):
   def plan = Array.make(slots.length())
   def child_count:
     for values(count = 0):
@@ -435,8 +426,8 @@ fun short_node(plan :: Array, i :: Int) :: Int:
 
 
 fun exec_concat_plan(slots :: Vec,
-                     plan :: (Array || False),
-                     height :: Int) :: Vec:
+                     plan :: maybe(Array),
+                     height :: Int) :: Array:
   if !plan
   | slots
   | def flattened:
@@ -446,16 +437,18 @@ fun exec_concat_plan(slots :: Vec,
         child
     // TODO use a conslist and iterate backwards here?
     // or TODO: use for Array ... ? avoid copying vec every iteration?
-    def (_, new_slots):
-      for values(sum = 0, v = vec()):
-        each i: 0..plan.length()
-        values(sum + plan[i],
-               add_vec(v,
-                       // TODO set sizes here?
-                       set_sizes(for values(v = vec()):
-                                   each j: sum .. sum + plan[i]
-                                   add_vec(v, flattened[j]),
-                                 height - 1)))
+    def new_slots = Array.make(plan.length())
+    for values(sum = 0):
+      each i: 0..plan.length()
+      let new_sum = sum + plan[i]
+      let new_node:
+        for Array:
+          each j: sum .. new_sum
+          flattened[j]
+      new_slots[i] :=  set_sizes(unsafe.freeze_vec(new_node), height - 1)
+      
+      new_sum
+             
     new_slots
 
 
@@ -955,11 +948,11 @@ module test:
                               leaf(14, 15, 16)),
                           Array(4, 4, 3, 2, 3),
                           1)
-         ~is vec(leaf(1, 2, 3, 4),
-                 leaf(5, 6, 7, 8),
-                 leaf(9, 10, 11),
-                 leaf(12, 13),
-                 leaf(14, 15, 16))
+         ~is_now Array(leaf(1, 2, 3, 4),
+                       leaf(5, 6, 7, 8),
+                       leaf(9, 10, 11),
+                       leaf(12, 13),
+                       leaf(14, 15, 16))
 
   check: exec_concat_plan(vec(leaf(1, 2),
                               leaf(3),
@@ -967,12 +960,12 @@ module test:
                               leaf(8, 9)),
                           Array(3, 4, 2),
                           1)
-         ~is vec(leaf(1, 2, 3),
-                 leaf(4, 5, 6, 7),
-                 leaf(8, 9))
+         ~is_now Array(leaf(1, 2, 3),
+                       leaf(4, 5, 6, 7),
+                       leaf(8, 9))
 
   check: exec_concat_plan(vec(leaf(1, 2), leaf(3, 4)), #false,1)
-         ~is vec(leaf(1, 2), leaf(3, 4))
+         ~is_now Array(leaf(1, 2), leaf(3, 4))
 
   check: exec_concat_plan(vec(
                             Node(vec(leaf(1), leaf(2), leaf(3), leaf(4))),
@@ -980,9 +973,9 @@ module test:
                             Node(vec(leaf(9))),
                             Node(vec(leaf(10), leaf(11)))),
                           Array(4, 4, 3), 2)
-         ~is vec(Node(vec(leaf(1), leaf(2), leaf(3), leaf(4))),
-                 Node(vec(leaf(5), leaf(6), leaf(7), leaf(8))),
-                 Node(vec(leaf(9), leaf(10), leaf(11))))
+         ~is_now Array(Node(vec(leaf(1), leaf(2), leaf(3), leaf(4))),
+                       Node(vec(leaf(5), leaf(6), leaf(7), leaf(8))),
+                       Node(vec(leaf(9), leaf(10), leaf(11))))
 
   def l_root = Node(
     vec(Node(
@@ -1126,6 +1119,7 @@ module test:
                 3, 1)
   def tr = Tree(Node(vec(leaf(4, 5, 6, 7), leaf(8, 9))),
                 6, 1)
+  
   with_shift_inc(2):
     let result = tl.concat(tr)
     check: result
@@ -1137,6 +1131,10 @@ module test:
                     9, 1)
     check: result.root.sizes
            ~is vec(2, 3, 7, 9)
+    check: result.concat(Tree()) === result
+           ~is #true
+    check: Tree().concat(result) === result
+           ~is #true
            
     parameterize { max_error: 0 }:
       let result = tl.concat(tr)
@@ -1147,15 +1145,24 @@ module test:
                       9, 1)
       check: result.root.sizes
              ~is vec(3, 7, 9)
+
+    check: result.drop(4).to_list()
+           ~is [5, 6, 7, 8, 9]
+
+    let (result_l, result_r) = result.split(5)
+    check: result_l.to_list()
+           ~is [1, 2, 3, 4, 5]
+    check: result_r.to_list()
+           ~is [6, 7, 8, 9]
              
   /* split/drop/take tests TODO: test these more thoroughly */
-  check: Tree().split(1, #'l)
+  check: Tree().split(1)
          ~raises ""
 
-  check: Tree().add(1).add(2).split(1, ~side: #'l)
+  check: Tree().add(1).add(2).take(1)
          ~is Tree().add(1)
 
-  check: Tree().add(1).add(2).split(1, ~side: #'r)
+  check: Tree().add(1).add(2).drop(1)
          ~is Tree().add(2)
 
   check: Tree().add(1).add(2).add(3).to_list()
@@ -1170,6 +1177,12 @@ module test:
   let t = Tree().add_all(List.iota(32 ^ 3))
   check: t.take(32 ^ 3) === t
          ~is #true
+
+  check: t.drop(17).to_list()
+         ~is Tree().add_all(for List:
+                              each i: 17 .. 32 ^ 3
+                              i).to_list()
+
 
   /* helper function tests */
          
