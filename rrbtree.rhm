@@ -168,8 +168,8 @@ class Tree(root :: Node,
                    unsafe.freeze_vec(new_sizes))
 
         recur squash(node = new_root, new_height = height):
-          if new_root.size == 1 && new_height > 0
-          | squash(new_root.first, new_height - 1)
+          if node.size == 1 && new_height > 0
+          | squash(node.first, new_height - 1)
           | Tree(node, pos, new_height)
         
 
@@ -182,28 +182,19 @@ class Tree(root :: Node,
     | ~else:
         def new_root = recur drop(node = root, index = pos, depth = height):
           cond
-          | radix_of(index, depth) >= node.size:
-              error(#'drop_new_child_size_zero, "(index=" +& index +& ") >= (size=" +& node.size +& "): node=" +& node)
-              #false // TODO does thi sever happen?
           | depth == 0:
               Node(unsafe.freeze_vec(vec_drop(node.children, radix_of(index, 0))))
           | node.balanced:
               def branch_index = radix_of(index, depth)
               def new_children = vec_drop(node.children, branch_index)
               def new_child = drop(node.get(branch_index), index, depth - 1)
-              
-              if_not new_child:
-               error(#'drop, "new_child == #false") // TODO debugging
-                
               new_children[0] := new_child
+              
               def size0:
                 if (!new_child || depth == 1 || new_child.balanced)
                 | (1 bits.(<<) (depth * shift_inc())) - radix_of(index, depth - 1)
                 | new_child.sizes[new_child.size - 1]
-              def new_len:
-                if !new_child // TODO never happens?
-                | node.size - branch_index - 1
-                | node.size - branch_index    
+              def new_len = node.size - branch_index    
               def step = 1 bits.(<<) (depth * shift_inc())
               def new_sizes = Array.make(new_len)
               
@@ -217,12 +208,8 @@ class Tree(root :: Node,
               def new_children = vec_drop(node.children, branch_index)
               def new_sizes = for Array:
                 each i: branch_index .. node.sizes.length()
-                node.sizes[i] - index // if depth > 1 | pos | branch_index
-                //vec_drop(node.sizes, branch_index)
+                node.sizes[i] - index 
               def new_child = drop(node.get(branch_index), subindex, depth - 1)
-              
-              if_not new_child:
-               error(#'drop, "new_child == #false") // TODO debugging
                 
               new_children[0] := new_child  
               Node(unsafe.freeze_vec(new_children),
@@ -281,6 +268,16 @@ class Tree(root :: Node,
                          rhs.height,
                          #true),
           size + rhs.size)
+
+  method insert(at :: NonnegInt, el) :~ Tree:
+    cond
+    | at <= 0:
+        Tree().add(el).concat(this)
+    | at >= size - 1:
+        this.add(el)
+    | ~else:
+        let (l, r) = split(at)
+        l.add(el).concat(r)
 
   // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
   // rather than traverse once per element of represented vector
@@ -355,13 +352,10 @@ fun rebalance(left :: maybe(Node),
                    
 
 /* merge all children except for the rightmost in `left` and leftmost in `right` */
-fun merge_nodes(left :: maybe(Node), center :: Node, right :: maybe(Node)) :: Vec:
-  // TODO i dont really need these to be 'Vec's i.e. immutable, would need to import #{vector-append}
-  // rather than (in addition to?) my append_vec wrapper
-  
-  append_vec(if !left || left.size == 0 | vec() | vec_drop_right(left.children, 1),
-             center.children,
-             if !right || right.size == 0 | vec() | vec_drop(right.children, 1))
+fun merge_nodes(left :: maybe(Node), center :: Node, right :: maybe(Node)) :: Array:
+  array_append(if !left || left.size == 0 | vec() | vec_drop_right(left.children, 1),
+               center.children,
+               if !right || right.size == 0 | vec() | vec_drop(right.children, 1))
 
 // TODO how to avoid setting sizes when the tree is leftwise dense?
 fun set_sizes(children :: Vec, height :: Int) :: Node:
@@ -373,7 +367,7 @@ fun set_sizes(children :: Vec, height :: Int) :: Node:
         each i: 0 .. children.length()
         def child_size =  size_subtree(children[i], height - 1)
         values(add_vec(sizes, sum + child_size),
-               sum + child_size) // TODO what i really want here is a `scanl` function
+               sum + child_size)
              
 
     Node(children, sizes)
@@ -381,7 +375,7 @@ fun set_sizes(children :: Vec, height :: Int) :: Node:
 
 // TODO redesign this to be less imperative?
 /* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
-fun concat_plan(slots :: Vec) :: maybe(Array):
+fun concat_plan(slots :: Array) :: maybe(Array):
   def plan = Array.make(slots.length())
   def child_count:
     for values(count = 0):
@@ -425,7 +419,7 @@ fun short_node(plan :: Array, i :: Int) :: Int:
   | short_node(plan, i + 1)
 
 
-fun exec_concat_plan(slots :: Vec,
+fun exec_concat_plan(slots :: Array,
                      plan :: maybe(Array),
                      height :: Int) :: Array:
   if !plan
@@ -435,11 +429,11 @@ fun exec_concat_plan(slots :: Vec,
         each node: slots
         each child: node.children
         child
-    // TODO use a conslist and iterate backwards here?
-    // or TODO: use for Array ... ? avoid copying vec every iteration?
+        
     def new_slots = Array.make(plan.length())
     for values(sum = 0):
       each i: 0..plan.length()
+              
       let new_sum = sum + plan[i]
       let new_node:
         for Array:
@@ -498,7 +492,8 @@ fun step(node :: Node, index, depth) :~ (NonnegInt, NonnegInt):
          | index - node.sizes[branch - 1])
 
 // count number of nodes that either have room themselves for another element and/or branch,
-// or one of their right-most descendants has room
+// or one of their right-most descendents has room
+  
 // TODO very large trees (larger than 32^3) tend to go OOM in this function.
 // is there a more efficient way tod o this? Perhaps just assume there's room in the tree
 // and check properties of the generated new_root to see if that's correct or not?
@@ -1155,7 +1150,7 @@ module test:
     check: result_r.to_list()
            ~is [6, 7, 8, 9]
              
-  /* split/drop/take tests TODO: test these more thoroughly */
+  /* split/drop/take tests */
   check: Tree().split(1)
          ~raises ""
 
@@ -1183,17 +1178,27 @@ module test:
                               each i: 17 .. 32 ^ 3
                               i).to_list()
 
+  let t = Tree().add_all(List.iota(1030))
+  check: t.insert(10, -1).to_list()
+         ~is List.iota(10).append([-1]).append(for List:
+                                                 each i: 10 .. 1030
+                                                 i)
+  let t = t.concat(Tree().add_all(List.iota(25)))
+  check: t.insert(29, #false).to_list()
+         ~is List.iota(29).append(for List:
+                                    each i: 29 .. 1030
+                                    i).append(List.iota(25))
 
   /* helper function tests */
          
   check: merge_nodes(leaf(1, 2, 3), leaf(4, 5), leaf(6, 7, 8, 9))
-         ~is vec(1, 2, 4, 5, 7, 8, 9)
+         ~is_now Array(1, 2, 4, 5, 7, 8, 9)
   check: merge_nodes(leaf(), leaf(4), leaf(8, 16))
-         ~is vec(4, 16)
+         ~is_now Array(4, 16)
   check: merge_nodes(leaf(0, 2), leaf(), leaf(4, 8, 16, 32))
-         ~is vec(0, 8, 16, 32)
+         ~is_now Array(0, 8, 16, 32)
   check: merge_nodes(leaf(0), leaf(2, 4, 8), leaf())
-         ~is vec(2, 4, 8)
+         ~is_now Array(2, 4, 8)
 
 
   check: set_sizes(vec(leaf(1, 2, 3, 4),

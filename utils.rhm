@@ -9,6 +9,7 @@ export:
   set_vec
   vec_take
   append_vec
+  array_append
   vec_drop
   vec_drop_right
   vec_split
@@ -29,12 +30,14 @@ import lib("racket/vector.rkt") as vector:
     #{vector-drop-right} as vec_drop_right
     #{vector-split-at} as vec_split
     #{vector-take} as vec_take
+    #{vector-append} as array_append // we use this for our mutable arrays only, or internally in this module
     
   expose:
     vec_drop
     vec_drop_right
     vec_split
     vec_take
+    array_append
 
   
 namespace unsafe: 
@@ -65,7 +68,7 @@ fun set_vec(v :: Vec, idx :: NonnegInt, el) :: Vec:
 
 
 fun append_vec(vec0, ...) :: Vec:
-  unsafe.freeze_vec(vector.#{vector-append}(vec0, ...))
+  unsafe.freeze_vec(array_append(vec0, ...))
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
