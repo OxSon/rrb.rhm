@@ -2,11 +2,12 @@
 
 import "utils.rhm" open
 
+// import lib("racket/profile.rkt") as profile
+
 export:
   Tree
 
-// 'Tree with x' => Tree class with parameters set
-
+/*
 /* Parameters: not needed for final code but nice for development testing */
 fun instantiate_params(shift_increment :: Int):
   values(
@@ -40,6 +41,12 @@ module test:
            max_width() ~is 4
            shift_mask() ~is 3
 
+*/
+def shift_inc = 5
+def max_width = 1 bits.(<<) shift_inc
+def shift_mask = (1 bits.(<<) shift_inc) - 1
+def max_error = 2
+
 /* a node in the RRB Tree
 
   - a node is fully dense if it has exactly `m` children where `m` is the branching factor of the overall Tree
@@ -49,7 +56,7 @@ module test:
   - a node is balanced if it is leftwise dense or fully dense (note that leaves are always at least leftwise dense)
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
-class Node(children :: Vec = vec(), sizes :: maybe(Vec) = #false):
+class Node(children :~ Vec = vec(), sizes :~ maybe(Vec) = #false):
   private implements Equatable
  
   property balanced:
@@ -65,7 +72,7 @@ class Node(children :: Vec = vec(), sizes :: maybe(Vec) = #false):
     children[children.length() - 1]
 
 
-  private override equals(rhs :: Node, recur):
+  private override equals(rhs :~ Node, recur):
     children.length() == rhs.children.length()
       && (for values(eq = #true):
             each i: 0 .. children.length()
@@ -89,16 +96,16 @@ class Node(children :: Vec = vec(), sizes :: maybe(Vec) = #false):
 macro 'leaf($args)':
   'Node(vec($args))'
 
-fun mk_leaf(seq :: Sequence) :: Node:
+fun mk_leaf(seq :~ Sequence) :~ Node:
   Node(unsafe.freeze_vec(
          for Array:
            each val: seq
            val))
 
                     
-class Tree(root :: Node,
-           size :: NonnegInt,
-           height :: NonnegInt):
+class Tree(root :~ Node,
+           size :~ NonnegInt,
+           height :~ NonnegInt):
   
   private implements Equatable
 
@@ -109,14 +116,14 @@ class Tree(root :: Node,
   property balanced:
     root.balanced
 
-  private override equals(rhs :: Tree, recur):
+  private override equals(rhs :~ Tree, recur):
     size == rhs.size && recur(root, rhs.root)
 
   private override hash_code(recur):
     recur(root)
 
   // get the element at `index`
-  method get(index :: Int):
+  method get(index :~ Int):
     recur get(node = root, index = index, depth = height):
       if node.balanced
       | for values(n = node):
@@ -126,7 +133,7 @@ class Tree(root :: Node,
         get(node.get(branch_index), subindex, depth - 1)
 
   // functionally update the slot at `index` to `el`
-  method set(index :: Int, el) :~ Tree:
+  method set(index :~ Int, el) :~ Tree:
     def new_node = recur set(node = root, index = index, el = el, depth = height):
       cond
       | depth == 0:
@@ -143,7 +150,7 @@ class Tree(root :: Node,
   // trees that are a result of this method may not meet invariants, but rebalancing is costly
   // and future concatenations would restore the invariants due to rebalancing being done on concats.
   // TODO write some tests showing this
-  method take(pos :: NonnegInt) :~ Tree:
+  method take(pos :~ NonnegInt) :~ Tree:
     cond
     | pos <= 0:
         Tree()
@@ -174,7 +181,7 @@ class Tree(root :: Node,
           | Tree(node, pos, new_height)
         
 
-  method drop(pos :: NonnegInt) :~ Tree:
+  method drop(pos :~ NonnegInt) :~ Tree:
     cond
     | pos <= 0:
         this
@@ -193,10 +200,10 @@ class Tree(root :: Node,
               
               def size0:
                 if depth == 1 || new_child.balanced
-                | (1 bits.(<<) (depth * shift_inc())) - radix_of(index, depth - 1)
+                | (1 bits.(<<) (depth * shift_inc)) - radix_of(index, depth - 1)
                 | new_child.sizes[new_child.size - 1]
               def new_len = node.size - branch_index    
-              def step = 1 bits.(<<) (depth * shift_inc())
+              def step = 1 bits.(<<) (depth * shift_inc)
               def new_sizes = Array.make(new_len)
               
               for (i: 0 .. new_sizes.length()):
@@ -243,13 +250,13 @@ class Tree(root :: Node,
            size + 1,
            height)
 
-  method add_all(els :: List) :~ Tree:
+  method add_all(els :~ List) :~ Tree:
     for values(t = this):
       each el: els
       t.add(el)
 
   // TODO can't annotate multiple return values ?
-  method split(at :: NonnegInt): // :~ (Tree, Tree)
+  method split(at :~ NonnegInt): // :~ (Tree, Tree)
     cond
     | at == 0: values(Tree(), this)
     | at == size: values(this, Tree())
@@ -257,7 +264,7 @@ class Tree(root :: Node,
     | ~else: error(#'split, "invalid index")
     
 
-  method concat(rhs :: Tree) :~ Tree:
+  method concat(rhs :~ Tree) :~ Tree:
     cond
     | size == 0: rhs
     | rhs.size == 0: this
@@ -270,7 +277,7 @@ class Tree(root :: Node,
                          #true),
           size + rhs.size)
 
-  method insert(at :: NonnegInt, el) :~ Tree:
+  method insert(at :~ NonnegInt, el) :~ Tree:
     cond
     | at <= 0:
         Tree().add(el).concat(this)
@@ -282,17 +289,17 @@ class Tree(root :: Node,
 
   // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
   // rather than traverse once per element of represented vector
-  method to_list() :: List:
+  method to_list() :~ List:
     for List:
       each idx: 0..size
       get(idx)
 
 
-fun concat_subtree(left :: Node,
-                   height_l :: Int,
-                   right :: Node,
-                   height_r :: Int,
-                   top :: Boolean) :~ Node:
+fun concat_subtree(left :~ Node,
+                   height_l :~ Int,
+                   right :~ Node,
+                   height_r :~ Int,
+                   top :~ Boolean) :~ Node:
   cond
   /* only trees of the same height can be concatenated */
   | height_l > height_r:
@@ -316,7 +323,7 @@ fun concat_subtree(left :: Node,
                 height_r,
                 top)
   | height_l == 0:
-      if top && left.size + right.size <= max_width()
+      if top && left.size + right.size <= max_width
       | Node(append_vec(left.children, right.children))
       | set_sizes(vec(left, right), 1)
   | ~else:
@@ -331,35 +338,35 @@ fun concat_subtree(left :: Node,
                 height_l,
                 top)
 
-fun rebalance(left :: maybe(Node),
-              center :: Node,
-              right :: maybe(Node),
-              height :: Int,
-              top :: Boolean) :~ Node:
+fun rebalance(left :~ maybe(Node),
+              center :~ Node,
+              right :~ maybe(Node),
+              height :~ Int,
+              top :~ Boolean) :~ Node:
   def all_slots = merge_nodes(left, center, right)
   def plan = concat_plan(all_slots)
   def rebalanced_slots = exec_concat_plan(all_slots, plan, height)
 
   cond
-  | rebalanced_slots.length() <= max_width() && !top:
+  | rebalanced_slots.length() <= max_width && !top:
       Node(vec(set_sizes(unsafe.freeze_vec(rebalanced_slots), height)))
-  | rebalanced_slots.length() <= max_width():
+  | rebalanced_slots.length() <= max_width:
       set_sizes(unsafe.freeze_vec(rebalanced_slots), height)
   | ~else:
-      def (new_left, new_right) = vec_split(rebalanced_slots, max_width())
+      def (new_left, new_right) = vec_split(rebalanced_slots, max_width)
       set_sizes(vec(set_sizes(unsafe.freeze_vec(new_left), height),
                     set_sizes(unsafe.freeze_vec(new_right), height)),
                 height + 1)
                    
 
 /* merge all children except for the rightmost in `left` and leftmost in `right` */
-fun merge_nodes(left :: maybe(Node), center :: Node, right :: maybe(Node)) :: Array:
+fun merge_nodes(left :~ maybe(Node), center :~ Node, right :~ maybe(Node)) :~ Array:
   array_append(if !left || left.size == 0 | vec() | vec_drop_right(left.children, 1),
                center.children,
                if !right || right.size == 0 | vec() | vec_drop(right.children, 1))
 
 // TODO how to avoid setting sizes when the tree is leftwise dense?
-fun set_sizes(children :: Vec, height :: Int) :: Node:
+fun set_sizes(children :~ Vec, height :~ Int) :~ Node:
   if height == 0
   | Node(children)
   | // TODO do this more efficiently
@@ -376,7 +383,7 @@ fun set_sizes(children :: Vec, height :: Int) :: Node:
 
 // TODO redesign this to be less imperative?
 /* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
-fun concat_plan(slots :: Array) :: maybe(Array):
+fun concat_plan(slots :~ Array) :~ maybe(Array):
   def plan = Array.make(slots.length())
   def child_count:
     for values(count = 0):
@@ -385,14 +392,14 @@ fun concat_plan(slots :: Array) :: maybe(Array):
       plan[i] := slots[i].size
       count + plan[i]
 
-  def optimal_node_len = math.ceiling(child_count / max_width())
-  def target_node_len = optimal_node_len + max_error()
+  def optimal_node_len = math.ceiling(child_count / max_width)
+  def target_node_len = optimal_node_len + max_error
   
   if target_node_len >= plan.length()
   | #false
   | distribute(plan.copy(), target_node_len, plan.length())
              
-fun distribute(plan :: Array, target :: Int, count :: Int, node_idx :: Int = 0) :: Array:
+fun distribute(plan :~ Array, target :~ Int, count :~ Int, node_idx :~ Int = 0) :~ Array:
   if target >= count:
   | vec_take(plan, count)
   | let i = short_node(plan, node_idx)
@@ -402,7 +409,7 @@ fun distribute(plan :: Array, target :: Int, count :: Int, node_idx :: Int = 0) 
                  r = plan[i]):
         each _: 0..
         final_when r == 0
-        def min_size = math.min(r + plan[i + 1], max_width())
+        def min_size = math.min(r + plan[i + 1], max_width)
         plan[i] := min_size
         values(i + 1, r + plan[i + 1] - min_size)
 
@@ -414,15 +421,15 @@ fun distribute(plan :: Array, target :: Int, count :: Int, node_idx :: Int = 0) 
     distribute(plan, target, count - 1, i - 1)
 
 
-fun short_node(plan :: Array, i :: Int) :: Int:
-  if plan[i] < max_width() - 1
+fun short_node(plan :~ Array, i :~ Int) :~ Int:
+  if plan[i] < max_width - 1
   | i
   | short_node(plan, i + 1)
 
 
-fun exec_concat_plan(slots :: Array,
-                     plan :: maybe(Array),
-                     height :: Int) :: Array:
+fun exec_concat_plan(slots :~ Array,
+                     plan :~ maybe(Array),
+                     height :~ Int) :~ Array:
   if !plan
   | slots
   | def flattened:
@@ -449,7 +456,7 @@ fun exec_concat_plan(slots :: Array,
 
 
 // TODO can we calculate this along the way and get rid of this extra traversal?
-fun calc_height_and_wrap(root :: Node, size :: Int):
+fun calc_height_and_wrap(root :~ Node, size :~ Int):
   def (_, height):
     for values(node = root, height = 0):
       each i: 0..
@@ -464,20 +471,20 @@ fun calc_height_and_wrap(root :: Node, size :: Int):
   seems to work except for in case of right-most child of root node,
   which we are currently correcting for in concat
 */
-fun size_subtree(node :: Node, height :: Int):
+fun size_subtree(node :~ Node, height :~ Int):
   cond
   | height == 0:
       node.children.length()
   | node.sizes:
       node.sizes[node.size - 1]
   | ~else: // if sizes is #false, then we know we have a leftwise-dense subtree TODO: do we though?
-      ((node.size - 1) bits.(<<) (height * shift_inc())) + size_subtree(node.last, height - 1)
+      ((node.size - 1) bits.(<<) (height * shift_inc)) + size_subtree(node.last, height - 1)
       
 
 /* helper functions */
       
-fun radix_of(index :: Int, height :: Int) :~ Int:
-  (index bits.(>>) (shift_inc() * height)) bits.and shift_mask()
+fun radix_of(index :~ Int, height :~ Int) :~ Int:
+  (index bits.(>>) (shift_inc * height)) bits.and shift_mask
                       
 fun scan_sizes(sizes, target_index, i = 0) :~ Int:
   if sizes[i] <= target_index
@@ -485,7 +492,7 @@ fun scan_sizes(sizes, target_index, i = 0) :~ Int:
   | i
 
 // calculate next branch to take and subindex of `index` along that path
-fun step(node :: Node, index, depth) :~ (NonnegInt, NonnegInt):
+fun step(node :~ Node, index, depth) :~ (NonnegInt, NonnegInt):
   def branch = scan_sizes(node.sizes, index, radix_of(index, depth))
   values(branch,
          if branch == 0
@@ -506,7 +513,7 @@ fun copyable_count(node, height):
       values(if l == 0
              | n
              | n.get(l - 1),
-             if l < max_width()
+             if l < max_width
              | i + 1
              | count)
   count
@@ -593,7 +600,8 @@ module test:
          ~is Tree(leaf(0), 1, 0)
   check: Tree(leaf(0), 1, 0).add(1)
          ~is Tree(leaf(0, 1), 2, 0)
-         
+
+  /*
   with_shift_inc(1):
     check: Tree(leaf(0, 1), 2, 0).add(2)
            ~is Tree(Node(vec(leaf(0, 1), leaf(2))), 3, 1)
@@ -669,7 +677,7 @@ module test:
            ~is t.size + 1
     check: t2.height
            ~is t.height
-
+*/
 
   let t = Tree()
   let t2:
@@ -687,6 +695,7 @@ module test:
   check: Tree(leaf(0, 1, 2), 3, 0).set(0, -1)
          ~is Tree(leaf(-1, 1, 2), 3, 0)
 
+/*
   with_shift_inc(1):
     check: (Tree(
              Node(
@@ -794,7 +803,8 @@ module test:
              8,
              2).get(4)
            ~is 4
-
+*/
+         
   let t1:
     for values(t = Tree()):
       each i: 0 .. 2048
@@ -833,6 +843,8 @@ module test:
 
 
  /* concat tests */
+
+/*
   with_shift_inc(2):
     let tl = Tree().add_all(List.iota(15))
     let tr = Tree().add_all(List.map(List.iota(16),
@@ -935,7 +947,7 @@ module test:
                         math.ceiling(23 / 4) + 1,
                         8)
              ~is_now Array(4, 4, 4, 4, 4, 2, 1)
-
+*/
   check: exec_concat_plan(vec(leaf(1, 2, 3, 4),
                               leaf(5, 6),
                               leaf(7, 8, 9),
@@ -1049,7 +1061,7 @@ module test:
                     leaf(0, 0, 0, 0),
                     leaf(0, 0, 0, 0),
                     leaf(0, 0, 0, 0)))))))
-
+/*
   with_shift_inc(2):
     parameterize { max_error: 1 }:
       check: Tree(l_root, 59, 2).concat(Tree(r_root, 48, 2))
@@ -1150,7 +1162,8 @@ module test:
            ~is [1, 2, 3, 4, 5]
     check: result_r.to_list()
            ~is [6, 7, 8, 9]
-             
+  */
+  
   /* split/drop/take tests */
   check: Tree().split(1)
          ~raises ""
@@ -1220,6 +1233,7 @@ module test:
          ~is leaf(1, 2, 3, 4)
 
 
+/*
   let slots = vec(leaf(1, 2),
                   leaf(3),
                   leaf(4, 5, 6, 7),
@@ -1334,3 +1348,4 @@ module test:
          ~raises ""
   check: scan_sizes(vec(32, 63, 95), 64, radix_of(63, 1))
          ~is 2
+*/
