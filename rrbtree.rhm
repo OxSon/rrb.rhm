@@ -5,6 +5,7 @@ import "utils.rhm" open
 export:
   Tree
 
+// 'Tree with x' => Tree class with parameters set
 
 /* Parameters: not needed for final code but nice for development testing */
 fun instantiate_params(shift_increment :: Int):
