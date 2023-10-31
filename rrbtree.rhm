@@ -1185,10 +1185,8 @@ module test:
                                                  each i: 10 .. 1030
                                                  i)
   let t = t.concat(Tree().add_all(List.iota(25)))
-  check: t.insert(29, #false).to_list()
-         ~is List.iota(29).append(for List:
-                                    each i: 29 .. 1030
-                                    i).append(List.iota(25))
+  check: t.insert(29, -1).to_list()
+         ~is List.iota(29).append([-1]).append(List.map(List.iota(1030 - 29), fun (x): x + 29)).append(List.iota(25))
 
   /* helper function tests */
          
