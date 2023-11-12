@@ -1,0 +1,281 @@
+#lang rhombus
+ 
+import "utils.rhm" open
+import "ranges.rhm" open
+
+
+export:
+  Vector
+  EMPTY_VEC
+
+macro 'TODO $msg':
+  'error(#'TODO, $msg)'
+
+/* persistent vector a 'la Rich Hickey */
+
+def BITS = 5
+def MAX_WIDTH = 32
+def MASK = 31
+
+macro 'radix($index, $level)':
+  '((($index) bits.(>>) $level) bits.and MASK)'
+
+class Node(data :: Array):
+  constructor
+  | (): super(Array.make(MAX_WIDTH, #false))
+  | (data :: Array): super(data)
+  | (seq :: Sequence): super(for Array:
+                               each val: seq
+                               val)
+
+  property size: data.length()
+
+/* TODO
+  - optimization: transients
+  - optimization: have a 'head' in addition to 'tail' kept separately? would allow constant prepend and append
+*/
+class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array):
+  constructor
+  | (): super(Node(), 0, BITS, Array())
+  | (root, size, shift, tail): super(root, size, shift, tail)
+
+  fun from(seq :: Sequence):
+    for values(v = EMPTY_VEC):
+      each el: seq
+      v.add(el)
+      
+  export:
+    from
+        
+  method add(el) :~ Vector:
+    if size - tail_offset() < MAX_WIDTH
+    | def new_tail = Array.make(tail.length() + 1)
+      
+      Array.copy_from(new_tail, 0, tail)
+      new_tail[tail.length()] := el
+      
+      Vector(root, size + 1, shift, new_tail)
+    | // is there room in current root without overflow to a new level?
+      def overflow = (size bits.(>>) BITS) > (1 bits.(<<) shift)
+      Vector(if overflow | Node(Array(root, new_branch(shift, tail)))
+                         | push_tail(shift, root, tail),
+             size + 1,
+             if overflow | shift + BITS
+                         | shift,
+             Array(el))
+
+  method add_all(seq :: Sequence) :~ Vector:
+    for values(v = this):
+      each val: seq
+      v.add(val)
+  
+
+
+  method get(idx :: Int) :~ Vector:
+    array_for(idx)[idx bits.and MASK]
+
+  method set(idx :: Int, el) :~ Vector:
+    cond
+    | idx == size:
+        add(el)
+    | idx >= tail_offset():
+        
+        def new_tail = tail.copy()
+        tail[idx bits.and MASK] := el
+        Vector(root, size, shift, new_tail)
+    | idx >= 0:
+        def new_root:
+          recur set(level = shift, node = root) :: Node:
+            def ret = Node(node.data.copy())
+            if level == 0
+            | ret.data[idx bits.and MASK] := el
+            | def subidx = (idx bits.(>>) level) bits.and MASK
+              ret.data[subidx] := set(level - BITS, node.data[subidx])
+              
+            ret
+            
+        Vector(new_root, size, shift, tail)
+    | ~else: error(#'Vector, "index out of bounds")
+        
+
+  method take(pos :: Int) :~ Vector:
+    cond
+    | pos <= 0:
+        EMPTY_VEC
+    | pos >= size:
+        this
+    | pos > tail_offset():
+        // we're just cutting some stuff off the tail in this case
+        def new_tail_len = pos - tail_offset()
+        def new_tail = Array.make(new_tail_len, #false)
+        Array.copy_from(new_tail, 0, tail, 0, new_tail_len)
+        Vector(root, pos, shift, new_tail)
+    | ~else:
+        def new_root = recur take(node = root, level = shift):
+          def subidx = radix(size - 1, level)
+          
+          if level == 0
+          | Node(vec_take(node.data, subidx + 1))
+          | def new_children = vec_take(node.children, subidx + 1)
+            new_children[subidx] := take(node.data[subidx], shift - BITS)
+            Node(new_children)
+
+        // TODO is this needed?
+        recur squash(node = new_root, new_shift = shift):
+          if node.size == 1 && new_shift > 0
+          | squash(node.data[0], new_shift - BITS)
+          | Vector(node, pos, new_shift)
+
+  method drop(pos :: Int) :~ Vector:
+    cond
+    | pos <= 0:
+        this
+    | pos >= size:
+        Vector()
+    | size - pos <= tail.length():
+        def new_tail = Array.make(size - pos, #false)
+        Array.copy_from(new_tail, 0, tail, tail.length() - (size - pos))
+        Vector(Node(), size - pos, 0, new_tail)
+    | ~else:
+        def new_root = recur drop(node = root, level = shift):
+          def subindex = radix(pos, level)
+          
+          if level == 0
+          | Node(vec_drop(node.data, subindex))
+          | def new_children = vec_drop(node.data, subindex)
+            def new_child = drop(node.data[subindex], level - BITS)
+            new_children[0] := new_child
+                
+            Node(new_children)
+
+        // TODO do i need this?
+        recur squash(node = new_root, new_shift = shift):
+          if node.size == 1 && new_shift > 0
+          | squash(node.data[0], new_shift - 5)
+          | Vector(node, size - pos, new_shift, tail)
+
+  method pop():
+    TODO "pop"
+
+  method split(at :: Int):
+    match at
+    | 0: values(Vector(), this)
+    | size: values(this, Vector())
+    | all where all = size: values(this, Vector())
+
+
+  method to_list() :: List:
+    for List:
+      each i: 0 .. size
+      get(i)
+
+  property first: get(0)
+  property last: tail[tail.length() - 1]
+    
+
+  /* helper methods */
+
+  private method pop_tail(level :: Int, node :: Node) :: Node:
+    TODO "pop_tail"
+
+  private method push_tail(level :: Int, parent :: Node, tail_node :: Array) :: Node:
+    def subidx = ((size - 1) bits.(>>) level) bits.and MASK
+    def ret = Node(parent.data.copy())
+
+    ret.data[subidx] := if level == BITS
+    | Node(tail_node)
+    | def child = parent.data[subidx]
+      if child
+      | push_tail(level - BITS, child, tail_node)
+      | new_branch(level - BITS, tail_node)
+      
+    ret
+
+  private method tail_offset():
+    if size < 32
+    | 0
+    | ((size - 1) bits.(>>) BITS) bits.(<<) BITS
+
+
+  method array_for(idx):
+    cond
+    | idx < 0 || idx >= size:
+        error(#'Vector, "index out of bounds")
+    | idx >= this.tail_offset():
+        tail
+    | ~else:
+        recur f(node = root, i = shift):
+          if i == 0
+          | node.data
+          | node.data[(idx bits.(>>) i) bits.and MASK]
+        /*
+        for values(node = root):
+          each i: shift..1
+          node.data[(ids bits.(>>)  i) bits.and MASK]
+    #//
+        def node:
+
+          recur foo(i = 20, node = root):
+            ....
+          for values(node = root):
+            
+            each i: (1 <~ shift)
+            #//
+            each i: Sequence.make(~initial_position: shift,
+                                  ~continue_at_position: fun (pos): pos > 0,
+                                  ~position_to_element: fun (pos): pos,
+                                  ~position_to_next: fun (pos): pos - BITS)
+            node.data[(idx bits.(>>) i) bits.and MASK]
+            
+        node.data*/
+        
+/*
+  private method array_for(idx :: Int) :: Array:
+    cond
+    | idx < 0 || idx >= size:
+        error(#'Vector, "index out of bounds")
+    | idx >= tail_offset():
+        tail
+    | ~else:
+        for values(node = root):
+          each i: (0 <- shift)
+          node.data[(idx bits.(>>) i) bits.and MASK]
+          
+        #//
+        def node:
+          for values(node = root):
+            each i: Sequence.make(~initial_position: shift,
+                                  ~continue_at_position: fun (pos): pos > 0,
+                                  ~position_to_element: fun (pos): pos,
+                                  ~position_to_next: fun (pos): pos - BITS)
+            node.data[(idx bits.(>>) i) bits.and MASK]
+        #//
+        node.data
+*/
+/* helper functions */
+          
+fun new_branch(level :: Int, node :: Node) :: Node:
+  if level == 0
+  | node
+  | Node(Array(new_branch(level - BITS, node)))
+
+
+def EMPTY_VEC = Vector()
+
+module test:
+  check: EMPTY_VEC.add(1).to_list()
+         ~is [1]
+
+  let v:
+    for values(v = EMPTY_VEC):
+      each i: 0 .. (MAX_WIDTH + 10)
+      v.add(i)
+
+  for (i: 0 .. MAX_WIDTH + 10):
+    check: v.get(i)
+           ~is i
+
+  let v2 = v.set(0, -1)
+  check: v.get(0) ~is 0
+         v2.get(0) ~is -1
+         v.root.data[1] === v2.root.data[1] ~is #true

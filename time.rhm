@@ -1,0 +1,252 @@
+#lang rhombus/and_meta
+/*
+export:
+  make_trees
+  trees
+  catted_trees
+  time
+  times
+  timings
+  rkt_time
+*/
+
+import "rrbtree.rhm" open
+import rhombus/measure
+import lib("racket/base.rkt"):
+  expose: #{time-apply}
+  rename: #{time-apply} as rkt_time
+
+fun make_trees(sizes):
+  for List:
+    each size: sizes
+    for values(t = Tree()):
+      each i: 0 .. size
+      t.add(i)
+
+/* TODO compare against
+      - racket vectors
+      - hash tables mapping indices to values
+      - cons lists
+
+   we care about small trees, time doing X operation multiple times (100 times)? not just once
+
+  make sure to time:
+      - constructors
+      - 
+
+  goals: 10s or 100s of milliseconds
+*/
+
+macro 'time($f, $args)':
+  'block:
+     let (_, cpu, real, gc) = rkt_time($f, $args)
+     [cpu, real, gc]'
+
+macro 'times($f, $objs)':
+  'for Map:
+     each obj: $objs
+     values(sizeof(obj), time($f, [obj]))'
+
+fun kindof(obj):
+  cond
+  | obj is_a List: #'List
+  | obj is_a Tree: #'Tree
+fun sizeof(obj):
+  cond
+  | obj is_a List: obj.length()
+  | obj is_a Tree: obj.size
+
+def lst_large = List.iota(math.expt(32, 3))
+def tree_large = Tree().add_all(lst_large)
+def map_large = for Map:
+  each i: 0 .. math.expt(32, 3)
+  values(i, i)
+
+
+expr.macro 'run $rhs $num':
+  fun make_timer(subj, op):                          
+    'time(fun (t):
+            for (i: 0 .. $num):
+              $op,
+          [$subj])'
+    
+  match rhs
+  | 'list': make_timer('lst_large', 't.append([i])')
+  | 'tree': make_timer('tree_large', 't.add(i)')
+  | 'map': make_timer('map_large', 'map_update(m, map.length(), i)')
+
+
+def operations:
+  /* for each kind of vector-like structure, check
+  - construction
+  - add
+  - remove
+  - insert
+  - set
+  - take
+  - drop
+  - concat
+  - slice
+  - contains
+  */
+  {
+    #'list: {#'ctor: '',
+             #'cons: fun (t): List.cons(#false, t),
+             #'snoc: fun (t): t.append([#false]),
+             #'remove: '',
+             #'insert: '',
+             #'set: '',
+             #'take: '',
+             #'drop: '',
+             #'concat: fun (lhs, rhs): lhs.append(rhs),
+             #'slice: '',
+             #'contains: ''},
+    #'rrb: {#'ctor: '',
+            #'cons: fun (t): t.insert(0, #false),
+            #'snoc: fun (t): t.add(#false),
+            #'remove: '',
+            #'insert: 'fun (i, t): t.insert(i, #false)',
+            #'set: '',
+            #'take: '',
+            #'drop: '',
+            #'concat: fun (lhs, rhs): lhs.concat(rhs),
+            #'slice: '',
+            #'contains: ''},
+    #'vector: {},
+    #'map: {}
+  }
+
+/*
+
+macro 'measure $f for $trees':
+  'times($f, $trees)'
+
+defn.macro 'thunk $lhs = $rhs':
+  'def $lhs = fun (): $rhs'
+
+#//
+defn.macro 'thunk $lhs = $rhs':
+  'def mutable _$lhs = #false
+   def $lhs = fun (): if _$lhs
+                      | $_lhs
+                      | $rhs'
+
+def trees = make_trees(Function.map(fun (n): math.expt(32, n),
+                                    [0, 1, 2, 3, /* 4, 5, 6*/]))
+fun make_catted_trees(sizes):
+  for List:
+    each size: sizes
+    for values(t = Tree()):
+      each i: 0 .. size
+      t.concat(Tree().add(i))
+
+def catted_trees = make_catted_trees(Function.map(fun (n): math.expt(32, n),
+                                                  [0, 1, 2, 3,/*  4, 5, 6*/]))
+
+namespace timings:
+  thunk add_times = times(fun (t): t.add(#false), trees)
+  thunk set_times = times(fun (t): t.set(t.size - 1, #false), trees)
+  thunk take_times = times(fun (t): t.take(t.size div 2), trees)
+  thunk drop_times = measure (fun (t): t.drop(t.size div 2)) for trees
+  thunk concat_times = measure (fun (t):
+                                  let t2 = t.concat(t).concat(t).concat(t)
+                                  t2.concat(t2)) for trees
+
+
+
+  thunk add_times_catted = times(fun (t): t.add(#false), catted_trees)
+  thunk set_times_catted = times(fun (t): t.set(t.size - 1, #false), catted_trees)
+  thunk take_times_catted = times(fun (t): t.take(t.size div 2), catted_trees)
+  thunk drop_times_catted = measure (fun (t): t.drop(t.size div 2)) for catted_trees
+  thunk concat_times_catted = measure (fun (t):
+                                         let t2 = t.concat(t).concat(t).concat(t)
+                                         t2.concat(t2)) for catted_trees
+
+  export:
+    all_defined
+    
+
+
+println("balanced tree size: timing data")
+println("--------")
+println(".add:")
+println(timings.add_times())
+println(".set:")
+println(timings.set_times())
+println(".take:")
+println(timings.take_times())
+println(".drop: ")
+println(timings.drop_times())
+println(".concat:")
+println(timings.concat_times())
+println("--------")
+
+println("unbalanced tree size: timing data")
+println("--------")
+println(".add:")
+println(timings.add_times_catted())
+println(".set:")
+println(timings.set_times_catted())
+println(".take:")
+println(timings.take_times_catted())
+println(".drop: ")
+println(timings.drop_times_catted())
+println(".concat:")
+println(timings.concat_times_catted())
+
+
+
+  
+
+println(".add(x)\n--------")
+
+measure.time:
+  ~gc
+  def t:
+    for values(t = Tree()):
+      each i: 0 .. math.expt(32, 3) + 1
+      t.add(i)
+  t.get(3)
+
+measure.time:
+  ~gc
+  def t:
+    for List:
+      each i: 0 .. math.expt(32, 3) + 1
+      i
+  t[3]
+
+println("lhs ++ rhs\n--------")
+
+
+def t:
+  for values(t = Tree()):
+    each i: 0 .. math.expt(32, 3) + 1
+    t.add(i)
+
+def tlist:
+  for List:
+      each i: 0 .. math.expt(32, 3) + 1
+      i
+
+
+measure.time:
+  ~gc
+  t.concat(t).drop(10).concat(t).take(200).concat(t).get(3)
+
+measure.time:
+  ~gc
+  let tlist = tlist.append(tlist).drop_left(10).append(tlist)
+  tlist.drop_right(tlist.length() - 200).append(tlist)[3]
+
+let t = t.concat(t).drop(10).concat(t).drop(5).concat(t)
+
+#//
+def get_timings:
+  for Map:
+    each:
+      i: 0 .. t.size
+    values(i, measure.time:
+                t.get(i))
+
+*/
