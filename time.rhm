@@ -36,11 +36,12 @@ fun make_trees(sizes):
 
   goals: 10s or 100s of milliseconds
 */
+class Timings(~cpu, ~real, ~gc)
 
 macro 'time($f, $args)':
   'block:
      let (_, cpu, real, gc) = rkt_time($f, $args)
-     [cpu, real, gc]'
+     Timings(~cpu: cpu, ~real: real, ~gc: gc)'
 
 macro 'times($f, $objs)':
   'for Map:
@@ -112,6 +113,7 @@ def operations:
             #'concat: fun (lhs, rhs): lhs.concat(rhs),
             #'slice: '',
             #'contains: ''},
+    #'rb: {},
     #'vector: {},
     #'map: {}
   }
