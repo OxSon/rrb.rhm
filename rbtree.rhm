@@ -1,17 +1,13 @@
 #lang rhombus
  
 import "utils.rhm" open
-import "ranges.rhm" open
 
 
 export:
   Vector
   EMPTY_VEC
 
-macro 'TODO $msg':
-  'error(#'TODO, $msg)'
-
-/* persistent vector a 'la Rich Hickey */
+/* persistent vector a 'la Clojure */
 
 def BITS = 5
 def MAX_WIDTH = 32
@@ -20,15 +16,30 @@ def MASK = 31
 macro 'radix($index, $level)':
   '((($index) bits.(>>) $level) bits.and MASK)'
 
+module test:
+  for (i: 0 .. 32):
+    check: radix(i, 0)
+           ~is i
+    check: radix(i, 5)
+           ~is 0
+  for (i: 32 .. 64):
+    check: radix(i, 5)
+           ~is 1
+
 class Node(data :: Array):
   constructor
   | (): super(Array.make(MAX_WIDTH, #false))
-  | (data :: Array): super(data)
-  | (seq :: Sequence): super(for Array:
-                               each val: seq
-                               val)
+  | (data :: Array):
+      def _data = Array.make(MAX_WIDTH, #false)
+      Array.copy_from(_data, 0, data)
+      super(_data)
 
   property size: data.length()
+
+
+module test:
+  check: Node(Array(1, 2, 3, 4)).size
+         ~is MAX_WIDTH
 
 /* TODO
   - optimization: transients
@@ -116,7 +127,7 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
           
           if level == 0
           | Node(vec_take(node.data, subidx + 1))
-          | def new_children = vec_take(node.children, subidx + 1)
+          | def new_children = vec_take(node.data, subidx + 1)
             new_children[subidx] := take(node.data[subidx], shift - BITS)
             Node(new_children)
 
@@ -155,7 +166,22 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
           | Vector(node, size - pos, new_shift, tail)
 
   method pop():
-    TODO "pop"
+    cond
+    | size == 0:
+        error(#'Vector, "cannot pop an empty vector")
+    | size == 1:
+        EMPTY_VEC
+    | size - tail_offset() > 1:
+        def new_tail = Array.make(tail.length() - 1)
+        Array.copy_from(new_tail, 0, tail, 0, new_tail.length())
+        Vector(root, size - 1, shift, new_tail)
+    | ~else:
+        def new_tail = array_for(size - 2)
+        def new_root = pop_tail(shift, root) || Node()
+        
+        if shift > BITS && !(new_root.data[1])
+        | Vector(new_root.data[0], size - 1, shift - BITS, new_tail)
+        | Vector(new_root, size - 1, shift, new_tail)
 
   method split(at :: Int):
     match at
@@ -176,7 +202,21 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
   /* helper methods */
 
   private method pop_tail(level :: Int, node :: Node) :: Node:
-    TODO "pop_tail"
+    def subidx = ((size - 2) bits.(>>) level) bits.and MASK
+    cond
+    | level > 5:
+        def new_child = pop_tail(level - BITS, node.data[subidx])
+        if !new_child && subidx == 0
+        | #false
+        | def ret = Node(node.data.copy())
+          ret.data[subidx] := new_child
+          ret
+    | subidx == 0:
+        #false
+    | ~else:
+        def ret = Node(node.data.copy())
+        ret.data[subidx] := #false
+        ret
 
   private method push_tail(level :: Int, parent :: Node, tail_node :: Array) :: Node:
     def subidx = ((size - 1) bits.(>>) level) bits.and MASK
@@ -207,57 +247,14 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
         recur f(node = root, i = shift):
           if i == 0
           | node.data
-          | node.data[(idx bits.(>>) i) bits.and MASK]
-        /*
-        for values(node = root):
-          each i: shift..1
-          node.data[(ids bits.(>>)  i) bits.and MASK]
-    #//
-        def node:
-
-          recur foo(i = 20, node = root):
-            ....
-          for values(node = root):
+          | f(node.data[(idx bits.(>>) i) bits.and MASK], i - BITS)
             
-            each i: (1 <~ shift)
-            #//
-            each i: Sequence.make(~initial_position: shift,
-                                  ~continue_at_position: fun (pos): pos > 0,
-                                  ~position_to_element: fun (pos): pos,
-                                  ~position_to_next: fun (pos): pos - BITS)
-            node.data[(idx bits.(>>) i) bits.and MASK]
-            
-        node.data*/
-        
-/*
-  private method array_for(idx :: Int) :: Array:
-    cond
-    | idx < 0 || idx >= size:
-        error(#'Vector, "index out of bounds")
-    | idx >= tail_offset():
-        tail
-    | ~else:
-        for values(node = root):
-          each i: (0 <- shift)
-          node.data[(idx bits.(>>) i) bits.and MASK]
-          
-        #//
-        def node:
-          for values(node = root):
-            each i: Sequence.make(~initial_position: shift,
-                                  ~continue_at_position: fun (pos): pos > 0,
-                                  ~position_to_element: fun (pos): pos,
-                                  ~position_to_next: fun (pos): pos - BITS)
-            node.data[(idx bits.(>>) i) bits.and MASK]
-        #//
-        node.data
-*/
 /* helper functions */
           
-fun new_branch(level :: Int, node :: Node) :: Node:
+fun new_branch(level :: Int, data :: Array) :: Node:
   if level == 0
-  | node
-  | Node(Array(new_branch(level - BITS, node)))
+  | Node(data)
+  | Node(Array(new_branch(level - BITS, data)))
 
 
 def EMPTY_VEC = Vector()
@@ -279,3 +276,7 @@ module test:
   check: v.get(0) ~is 0
          v2.get(0) ~is -1
          v.root.data[1] === v2.root.data[1] ~is #true
+
+  let v = Vector.from(1..100)
+  check: v.size ~is 99
+         v.get(12) ~is 13
