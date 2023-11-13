@@ -10,11 +10,6 @@ def MAX_WIDTH = 32
 def SHIFT_MASK = 31
 def MAX_ERROR = 2
 
-#//
-operator :
-  ~stronger_than: * / + - <= >= == >> << and ..
-  ~associativity: ~right
-
 
 /* a node in the RRB Tree
 
