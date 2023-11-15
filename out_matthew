@@ -1,0 +1,642 @@
+"small_ctor"
+{
+  1:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 1),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 2, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 1,
+      ~iters: 10000
+    ),
+  5:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 15, ~real: 16, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 8, ~real: 8, ~gc: 2),
+      ~hash: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 5,
+      ~iters: 10000
+    ),
+  10:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 31, ~real: 32, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 12, ~real: 12, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 10,
+      ~iters: 10000
+    ),
+  50:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 242, ~real: 248, ~gc: 4),
+      ~rb: TimeBenchmark(~cpu: 65, ~real: 67, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 25, ~real: 26, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 50,
+      ~iters: 10000
+    ),
+  100:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 4, ~real: 4, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 614, ~real: 630, ~gc: 1),
+      ~rb: TimeBenchmark(~cpu: 136, ~real: 139, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 48, ~real: 49, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 100,
+      ~iters: 10000
+    ),
+  300:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 12, ~real: 13, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 2144, ~real: 2199, ~gc: 4),
+      ~rb: TimeBenchmark(~cpu: 413, ~real: 424, ~gc: 1),
+      ~hash: TimeBenchmark(~cpu: 173, ~real: 176, ~gc: 1),
+      ~rkt_vec: TimeBenchmark(~cpu: 6, ~real: 6, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 300,
+      ~iters: 10000
+    ),
+  500:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 17, ~real: 18, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 3705, ~real: 3800, ~gc: 8),
+      ~rb: TimeBenchmark(~cpu: 684, ~real: 704, ~gc: 2),
+      ~hash: TimeBenchmark(~cpu: 347, ~real: 354, ~gc: 2),
+      ~rkt_vec: TimeBenchmark(~cpu: 10, ~real: 11, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 500,
+      ~iters: 10000
+    )
+}
+"ctor"
+{
+  1:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 1,
+      ~iters: 1000
+    ),
+  5:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 5,
+      ~iters: 1000
+    ),
+  10:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 10,
+      ~iters: 1000
+    ),
+  50:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 24, ~real: 24, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 6, ~real: 6, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 50,
+      ~iters: 1000
+    ),
+  100:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 61, ~real: 63, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 13, ~real: 13, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 4, ~real: 5, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 100,
+      ~iters: 1000
+    ),
+  300:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 214, ~real: 220, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 40, ~real: 42, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 17, ~real: 17, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 300,
+      ~iters: 1000
+    ),
+  500:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 370, ~real: 380, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 67, ~real: 70, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 34, ~real: 35, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 500,
+      ~iters: 1000
+    ),
+  1000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 774, ~real: 794, ~gc: 2),
+      ~rb: TimeBenchmark(~cpu: 136, ~real: 140, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 67, ~real: 69, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 1000,
+      ~iters: 1000
+    ),
+  10000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 36, ~real: 39, ~gc: 1),
+      ~rrb: TimeBenchmark(~cpu: 11697, ~real: 11997, ~gc: 60),
+      ~rb: TimeBenchmark(~cpu: 1433, ~real: 1476, ~gc: 8),
+      ~hash: TimeBenchmark(~cpu: 914, ~real: 928, ~gc: 20),
+      ~rkt_vec: TimeBenchmark(~cpu: 21, ~real: 22, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "ctor",
+      ~size: 10000,
+      ~iters: 1000
+    )
+}
+"snoc"
+{
+  1:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 1,
+      ~iters: 10000
+    ),
+  5:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 5,
+      ~iters: 10000
+    ),
+  10:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 10,
+      ~iters: 10000
+    ),
+  50:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 8, ~real: 8, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 50,
+      ~iters: 10000
+    ),
+  100:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 7, ~real: 8, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 100,
+      ~iters: 10000
+    ),
+  300:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 7, ~real: 7, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 8, ~real: 8, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 7, ~real: 7, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 300,
+      ~iters: 10000
+    ),
+  500:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 12, ~real: 12, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 8, ~real: 8, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 11, ~real: 12, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 500,
+      ~iters: 10000
+    ),
+  1000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 23, ~real: 24, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 8, ~real: 8, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 22, ~real: 23, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 1000,
+      ~iters: 10000
+    ),
+  10000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 298, ~real: 314, ~gc: 2),
+      ~rrb: TimeBenchmark(~cpu: 12, ~real: 13, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 2, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 216, ~real: 226, ~gc: 1),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "snoc",
+      ~size: 10000,
+      ~iters: 10000
+    )
+}
+"cons"
+{
+  1:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 1,
+      ~iters: 1000
+    ),
+  5:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 5,
+      ~iters: 1000
+    ),
+  10:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 10,
+      ~iters: 1000
+    ),
+  50:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 14, ~real: 14, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 3, ~real: 3, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 50,
+      ~iters: 1000
+    ),
+  100:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 31, ~real: 32, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 6, ~real: 7, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 100,
+      ~iters: 1000
+    ),
+  300:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 94, ~real: 96, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 27, ~real: 28, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 300,
+      ~iters: 1000
+    ),
+  500:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 4, ~real: 4, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 160, ~real: 164, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 56, ~real: 58, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 500,
+      ~iters: 1000
+    ),
+  1000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 7, ~real: 7, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 315, ~real: 324, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 114, ~real: 118, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 1000,
+      ~iters: 1000
+    ),
+  10000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 10, ~real: 10, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 3585, ~real: 3680, ~gc: 12),
+      ~hash: TimeBenchmark(~cpu: 1523, ~real: 1570, ~gc: 16),
+      ~rkt_vec: TimeBenchmark(~cpu: 21, ~real: 22, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "cons",
+      ~size: 10000,
+      ~iters: 1000
+    )
+}
+"add"
+{
+  1:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 5, ~real: 5, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 370, ~real: 379, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 173, ~real: 177, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 60, ~real: 63, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 51, ~real: 53, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 1,
+      ~iters: 1000000
+    ),
+  5:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 8, ~real: 9, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 378, ~real: 389, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 179, ~real: 184, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 66, ~real: 68, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 59, ~real: 61, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 5,
+      ~iters: 1000000
+    ),
+  10:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 7, ~real: 7, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 386, ~real: 397, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 184, ~real: 189, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 70, ~real: 72, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 68, ~real: 71, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 10,
+      ~iters: 1000000
+    ),
+  50:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 8, ~real: 9, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 808, ~real: 829, ~gc: 1),
+      ~rb: TimeBenchmark(~cpu: 199, ~real: 205, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 80, ~real: 82, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 151, ~real: 158, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 50,
+      ~iters: 1000000
+    ),
+  100:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 8, ~real: 9, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 802, ~real: 822, ~gc: 1),
+      ~rb: TimeBenchmark(~cpu: 182, ~real: 187, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 83, ~real: 86, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 272, ~real: 284, ~gc: 1),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 100,
+      ~iters: 1000000
+    ),
+  300:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 7, ~real: 7, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 827, ~real: 848, ~gc: 1),
+      ~rb: TimeBenchmark(~cpu: 191, ~real: 196, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 127, ~real: 130, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 705, ~real: 738, ~gc: 3),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 300,
+      ~iters: 1000000
+    ),
+  500:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 8, ~real: 9, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 845, ~real: 868, ~gc: 2),
+      ~rb: TimeBenchmark(~cpu: 202, ~real: 209, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 110, ~real: 113, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 1140, ~real: 1192, ~gc: 5),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 500,
+      ~iters: 1000000
+    ),
+  1000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 8, ~real: 9, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 930, ~real: 954, ~gc: 66),
+      ~rb: TimeBenchmark(~cpu: 185, ~real: 191, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 103, ~real: 106, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 2242, ~real: 2347, ~gc: 9),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 1000,
+      ~iters: 1000000
+    ),
+  10000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 7, ~real: 7, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 1289, ~real: 1324, ~gc: 2),
+      ~rb: TimeBenchmark(~cpu: 201, ~real: 207, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 125, ~real: 128, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 21596, ~real: 22626, ~gc: 207),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "add",
+      ~size: 10000,
+      ~iters: 1000000
+    )
+}
+"concat"
+{
+  1:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 1,
+      ~iters: 1000
+    ),
+  5:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 5,
+      ~iters: 1000
+    ),
+  10:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 2, ~real: 3, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 10,
+      ~iters: 1000
+    ),
+  50:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 18, ~real: 18, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 6, ~real: 6, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 50,
+      ~iters: 1000
+    ),
+  100:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 37, ~real: 38, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 12, ~real: 13, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 100,
+      ~iters: 1000
+    ),
+  300:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 4, ~real: 4, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 113, ~real: 116, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 50, ~real: 52, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 300,
+      ~iters: 1000
+    ),
+  500:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 1, ~real: 1, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 6, ~real: 6, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 188, ~real: 194, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 77, ~real: 79, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 500,
+      ~iters: 1000
+    ),
+  1000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 2, ~real: 2, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 12, ~real: 13, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 384, ~real: 395, ~gc: 0),
+      ~hash: TimeBenchmark(~cpu: 163, ~real: 168, ~gc: 0),
+      ~rkt_vec: TimeBenchmark(~cpu: 4, ~real: 4, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 1000,
+      ~iters: 1000
+    ),
+  10000:
+    Timings(
+      ~list: TimeBenchmark(~cpu: 30, ~real: 31, ~gc: 0),
+      ~rrb: TimeBenchmark(~cpu: 16, ~real: 16, ~gc: 0),
+      ~rb: TimeBenchmark(~cpu: 4224, ~real: 4342, ~gc: 13),
+      ~hash: TimeBenchmark(~cpu: 1945, ~real: 2005, ~gc: 32),
+      ~rkt_vec: TimeBenchmark(~cpu: 40, ~real: 42, ~gc: 0),
+      ~control: TimeBenchmark(~cpu: 0, ~real: 0, ~gc: 0),
+      ~op: "++",
+      ~size: 10000,
+      ~iters: 1000
+    )
+}
