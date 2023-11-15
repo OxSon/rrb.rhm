@@ -466,7 +466,7 @@ fun calc_height_and_wrap(root :~ Node, size :~ Int):
   def (_, height):
     for values(node = root, height = 0):
       each i: 0..
-      final_when !(node :~ Node).first is_a Node
+      break_when !(node is_a Node)
       values(node.first, i)
     
   Tree(root, size, height)

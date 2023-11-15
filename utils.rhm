@@ -1,8 +1,7 @@
-#lang rhombus
+#lang rhombus/static
 
 export:
-  ^
-  Vec
+  //Vec
   vec
   unsafe
   add_vec
@@ -17,12 +16,12 @@ export:
   
 
 /* Array utilities for imitating COW immutable indexed sequences */
-
+// TODO could 'Immutable' be an annotation?
 import rhombus/meta open
 
 import lib("racket/base.rkt") as r:
   rename #{vector-immutable} as vec
-  expose vec
+  //expose vec
   
 import lib("racket/vector.rkt") as vector:
   rename:
@@ -31,7 +30,8 @@ import lib("racket/vector.rkt") as vector:
     #{vector-split-at} as vec_split
     #{vector-take} as vec_take
     #{vector-append} as array_append // we use this for our mutable arrays only, or internally in this module
-    
+
+  #//
   expose:
     vec_drop
     vec_drop_right
@@ -45,39 +45,54 @@ namespace unsafe:
     rename:
       #{unsafe-vector*->immutable-vector!} as freeze_vec
 
+    #//
     expose:
       freeze_vec
+
+  fun freeze_vec(v :~ Array) :~ Array:
+    unsafe.freeze_vec(v)
       
   export freeze_vec
   
+#//  
 annot.macro 'Vec':
   annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
 
+fun vec(e0, ...) :~ Array:
+  macro 'do($e0, ...)':
+    'r.vector($e0, ...)'
+  do(e0, ...)
+fun vec_drop(v :~ Array, pos :~ Int) :~ Array:
+  vector.vec_drop(v, pos)
+fun vec_drop_right(v :~ Array, pos :~ Int) :~ Array:
+  vector.vec_drop_right(v, pos)
+fun vec_split(v :~ Array, pos :~ Int) :~ Array:
+  vector.vec_split(v, pos)
+fun vec_take(v :~ Array, pos :~ Int) :~ Array:
+  vector.vec_take(v, pos)
+fun array_append(v0 :~ Array, ...) :~ Array:
+  macro 'do($v0, ...)':
+    'vector.array_append($v0, ...)'
+  do(v0, ...)
 
-fun add_vec(v :~ Vec, el) :~ Vec:
+fun add_vec(v :~ Array, el) :~ Array:
   def ret = Array.make(v.length() + 1)
   Array.copy_from(ret, 0, v)
   ret[v.length()] := el
   unsafe.freeze_vec(ret)
 
 
-fun set_vec(v :~ Vec, idx :~ NonnegInt, el) :~ Vec:
+fun set_vec(v :~ Array, idx :~ NonnegInt, el) :~ Array:
   def ret = Array.copy(v)
   ret[idx] := el
   unsafe.freeze_vec(ret)  
 
 
-fun append_vec(vec0, ...) :~ Vec:
+fun append_vec(vec0, ...) :~ Array:
   unsafe.freeze_vec(array_append(vec0, ...))
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
-
-operator base ^ exp:
-  ~stronger_than: * / + - <= >= == >> << and ..
-  ~associativity: ~right
-                  
-  math.expt(base, exp)
 
 macro 'if_not $condition ...:
          $do':
@@ -88,32 +103,33 @@ macro 'if_not $condition ...:
 module test:
 
   check: set_vec(vec(1, 2, 3), 1, -1)
-         ~is vec(1, -1, 3)
+         ~is_now vec(1, -1, 3)
 
-
+// this no longer holds true
+  #//
   check: vec(1, 2, 3)[0] := -1
          ~raises ""
 
   check: unsafe.freeze_vec(Array(1, 2, 3))
-         ~is vec(1, 2, 3)
+         ~is_now vec(1, 2, 3)
 
   check: add_vec(vec(1, 2, 3), 4)
-         ~is vec(1, 2, 3, 4)
+         ~is_now vec(1, 2, 3, 4)
 
   check: append_vec(vec(1, 2, 3), vec(4, 5))
-         ~is vec(1, 2, 3, 4, 5)
+         ~is_now vec(1, 2, 3, 4, 5)
 
   check: append_vec(vec(#'a, #'b, #'c),
                     vec(1, 2, 3),
                     vec("the industrial revolution and its consequences..."))
-         ~is vec(#'a, #'b, #'c,
-                 1, 2, 3,
-                 "the industrial revolution and its consequences...")
+         ~is_now vec(#'a, #'b, #'c,
+                     1, 2, 3,
+                     "the industrial revolution and its consequences...")
 
   check: TODO "foo"
          ~raises "foo"
          
-  fun inv(x :~ Int):
+  fun inv(x :~ Int) :~ maybe(Int):
     if_not x == 0:
       1 / x
     
@@ -122,9 +138,3 @@ module test:
     
   check: inv(0)
          ~is #void
-
-  check: 2 ^ 3
-         ~is 8
-
-  check: 2 ^ 3 + 1 <= 100 / 10 - 1
-         ~is #true
