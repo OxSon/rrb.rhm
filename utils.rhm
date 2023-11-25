@@ -1,27 +1,21 @@
-#lang rhombus/static
+#lang rhombus/and_meta //static/and_meta
 
 export:
-  //Vec
+  Vec
   vec
   unsafe
-  add_vec
-  set_vec
-  vec_take
-  append_vec
-  array_append
-  vec_drop
-  vec_drop_right
-  vec_split
   if_not
   
 
 /* Array utilities for imitating COW immutable indexed sequences */
 // TODO could 'Immutable' be an annotation?
-import rhombus/meta open
-
+  
 import lib("racket/base.rkt") as r:
-  rename #{vector-immutable} as vec
-  //expose vec
+  rename:
+    #{vector-immutable} as pvector // for persistent vector
+    #{immutable?} as frozen
+
+  expose frozen
   
 import lib("racket/vector.rkt") as vector:
   rename:
@@ -31,13 +25,65 @@ import lib("racket/vector.rkt") as vector:
     #{vector-take} as vec_take
     #{vector-append} as array_append // we use this for our mutable arrays only, or internally in this module
 
-  #//
-  expose:
-    vec_drop
-    vec_drop_right
-    vec_split
-    vec_take
-    array_append
+macro
+| 'freeze($a)': '(unsafe.freeze_vec($a) :~ Vec)'    
+| 'freeze:
+     $a
+     ...': '(unsafe.freeze_vec(block:
+                                 $a
+                                 ...) :~ Vec)'
+
+macro
+| 'as_frozen ($name = $init):
+     $exp
+     ...': 'unsafe.freeze_vec(block:
+                                let $name = $init
+                                $exp
+                                ...
+                                $name)'
+| 'as_frozen $name:
+     $exp
+     ...': 'unsafe.freeze_vec(block:
+                                $exp
+                                ...
+                                $name)'
+#//
+macro 'thaw $name:
+         $exp
+         ...': 'block:
+                  let $name = $name.copy()
+                  $exp
+                  ...
+                  $name'
+    
+
+// TODO fix this up so that our Vec type is ergonomic
+dot.macro 'vec_dot_provider $v . $a':
+  match a
+  | 'length': 'fun (): Array.length($v)'
+  | 'get': 'fun (i): $v[i]'
+  | 'set': 'fun (i, el):
+              as_frozen ret:
+                let ret = Array.copy($v)
+                ret[i] := el'
+  | 'add': 'fun (el): as_frozen ret:
+                        let ret = Array.make(Array.length($v) + 1)
+                        Array.copy_from(ret, 0, $v)
+                        ret[Array.length($v)] := el'
+  | 'drop': 'fun (pos): freeze(vector.vec_drop($v, pos))'
+  | 'drop_right': 'fun (pos): freeze(vector.vec_drop_right($v, pos))'
+  | 'split': 'fun (pos):
+                  let (l, r) = vector.vec_split($v, pos)
+                  values(freeze(l), freeze(r))'
+  | 'take': 'fun (pos): freeze(vector.vec_take($v, pos))'
+  | 'append': 'fun (u): freeze(vector.array_append($v, u)) :~ Vec'
+  | _:  error(#'todo, "vec dot provider")
+
+// TODO: not sure this 'Vec' annotation is all that useful in the end
+annot.macro 'Vec':
+  annot_meta.pack_predicate('fun (v): r.#{vector?}(v) && frozen(v)',
+                            '(($(statinfo_meta.dot_provider_key),
+                               vec_dot_provider))')
 
   
 namespace unsafe: 
@@ -45,51 +91,14 @@ namespace unsafe:
     rename:
       #{unsafe-vector*->immutable-vector!} as freeze_vec
 
-    #//
-    expose:
-      freeze_vec
-
-  fun freeze_vec(v :~ Array) :~ Array:
+  fun freeze_vec(v :~ Array) :~ Vec:
     unsafe.freeze_vec(v)
       
   export freeze_vec
-  
-#//  
-annot.macro 'Vec':
-  annot_meta.pack_predicate('r.#{vector?} && r.#{immutable?}')
 
-fun vec(e0, ...) :~ Array:
-  macro 'do($e0, ...)':
-    'r.vector($e0, ...)'
-  do(e0, ...)
-fun vec_drop(v :~ Array, pos :~ Int) :~ Array:
-  vector.vec_drop(v, pos)
-fun vec_drop_right(v :~ Array, pos :~ Int) :~ Array:
-  vector.vec_drop_right(v, pos)
-fun vec_split(v :~ Array, pos :~ Int) :~ Array:
-  vector.vec_split(v, pos)
-fun vec_take(v :~ Array, pos :~ Int) :~ Array:
-  vector.vec_take(v, pos)
-fun array_append(v0 :~ Array, ...) :~ Array:
-  macro 'do($v0, ...)':
-    'vector.array_append($v0, ...)'
-  do(v0, ...)
+macro 'vec($el, ...)':
+  '(r.pvector($el, ...) :~ Vec)'
 
-fun add_vec(v :~ Array, el) :~ Array:
-  def ret = Array.make(v.length() + 1)
-  Array.copy_from(ret, 0, v)
-  ret[v.length()] := el
-  unsafe.freeze_vec(ret)
-
-
-fun set_vec(v :~ Array, idx :~ NonnegInt, el) :~ Array:
-  def ret = Array.copy(v)
-  ret[idx] := el
-  unsafe.freeze_vec(ret)  
-
-
-fun append_vec(vec0, ...) :~ Array:
-  unsafe.freeze_vec(array_append(vec0, ...))
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
@@ -99,33 +108,66 @@ macro 'if_not $condition ...:
   'if !($condition ...)
    | $do
    | #void'
-  
-module test:
 
-  check: set_vec(vec(1, 2, 3), 1, -1)
+
+module test:
+  check: Array(1, 2, 3) :: Vec
+         ~raises ""
+         
+  check: 3 :: Vec
+         ~raises ""
+         
+  check: vec(1, 2, 3) :: Vec
+         ~completes
+         
+  check: (Array(1, 2, 3) :~ Vec).add(4) :: Vec
+         ~completes
+         
+  check: vec(1, 2, 3).set(1, -1)
          ~is_now vec(1, -1, 3)
 
-// this no longer holds true
-  #//
-  check: vec(1, 2, 3)[0] := -1
+  check: (vec(1, 2, 3) :: Vec)[0] := -1
          ~raises ""
 
   check: unsafe.freeze_vec(Array(1, 2, 3))
          ~is_now vec(1, 2, 3)
 
-  check: add_vec(vec(1, 2, 3), 4)
+
+  check: vec(1, 2, 3).add(4)
          ~is_now vec(1, 2, 3, 4)
 
-  check: append_vec(vec(1, 2, 3), vec(4, 5))
+  check: vec(1, 2, 3).append(vec(4, 5))
          ~is_now vec(1, 2, 3, 4, 5)
 
-  check: append_vec(vec(#'a, #'b, #'c),
-                    vec(1, 2, 3),
-                    vec("the industrial revolution and its consequences..."))
+  check: vec(#'a, #'b, #'c)
+           .append(vec(1,2,3))
+           .append(vec("the industrial revolution and its consequences..."))
          ~is_now vec(#'a, #'b, #'c,
                      1, 2, 3,
                      "the industrial revolution and its consequences...")
 
+  check: vec(1, 2, 3).drop(1)
+         ~is_now vec(2, 3)
+  
+  check: vec(1, 2, 3).drop_right(1)
+         ~is_now vec(1, 2)
+  
+  let (l, r) = vec(1, 2, 3, 4).split(2)
+  check: l ~is_now vec(1, 2)
+         r ~is_now vec(3, 4)
+
+  check: vec(1, 2, 3).take(2)
+         ~is_now vec(1, 2)
+
+  // The first example completes and the second fails, but they really should both succeed
+  check: (vec(#'a, #'b, #'c).append(vec(1,2,3)) :~ Vec).append(vec("foo"))
+         ~is_now Array(#'a, #'b, #'c, 1, 2, 3, "foo")
+
+  check: (vec(#'a, #'b, #'c).append(vec(1,2,3)) /* :~ Vec */).append(vec("foo"))
+         ~completes
+
+         
+/* non vector stuff */
   check: TODO "foo"
          ~raises "foo"
          
@@ -138,3 +180,83 @@ module test:
     
   check: inv(0)
          ~is #void
+
+expr.macro 'docurry $f: $x ...':
+  /*
+  fun (_?, ...): dothing($cached_arg, _?, ...)
+  */
+  match '$f'
+  | '($e)': 'docurry $e: $x ...'
+  | 'fun (): $body': '(fun (_): $body)($x) ...'
+  | 'fun ($a, $b, ...): $body': '(fun ($a): curry ($b, ...))($x) ...'
+  | ~else: error(#'docurry, "noparse: " +& '$f')
+           
+// pipe
+operator x |> f:
+  ~associativity: ~left
+  ~weaker_than: ~other
+  f(x)
+
+#//
+operator f π x:
+  ~associativity: ~left
+  ~weaker_than: ~other
+  f(x)
+  //docurry f: x
+  /*
+  f curr x:
+  ~associativity: ~left
+  ~stronger_than: ~other
+  (docurry f: x)*/
+
+
+// compose
+operator f … g:
+  ~associativity: ~right
+  ~weaker_than: #%call
+  ~stronger_than: ~other
+  (fun (x): f(g(x)))
+
+// TODO curry an arbitrary $f that is a closure or fundef and be able to call it i.e. `(curry $f)(x)(y)(z)` would work
+expr.macro 'curry ($x, ...) ...: $body':
+  match '[$x, ...] ...'
+  | '[]': '($body)'
+  | '[$x, $y, ...]': '(fun ($x): (curry ($y, ...): $body))'
+
+defn.macro 'curry $f($x, ...) ...: $body':
+  match '[$x, ...] ...'
+  | '[]': 'def $f = $body'
+  | '[$x, $y, ...]': 'fun $f($x):
+                        curry $f($y, ...):
+                          $body
+                        $f'
+                      
+fun add1(x): x + 1
+fun mult2(x): x * 2
+
+
+module test:
+  check: (mult2 … add1)(3)
+         ~is 8
+  check: (mult2 … add1)(13)
+         ~is 28
+
+  check: (curry (x, y): x * y)(3)(7)
+         ~is 21
+         
+  curry y(m, x, b):
+    m * x + b
+    
+  check: y(3)(5)(1)
+         ~is 16
+
+  check: -13 |> mult2 |> add1 |> math.abs
+         ~is 25
+
+  check: -13 |> math.abs … add1 … mult2
+         ~is 25
+
+  curry add(x, y): x + y
+  curry expt(b, a): b ** a
+  check: 3 |> expt(2) |> add(-1)
+         ~is 7
