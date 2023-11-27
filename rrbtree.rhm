@@ -3,7 +3,7 @@
 import "utils.rhm" open
 
 export:
-  Tree
+  Vec
 
 def SHIFT_INC = 5
 def MAX_WIDTH = 32
@@ -57,80 +57,108 @@ class Node(children :~ Array.of(Node || Any) = vec(), sizes :~ Array.of(Int/*:~ 
     Node(set_vec(children, index, el), sizes)
 
 
+
 macro 'leaf($args)':
   'Node(vec($args))'
 
-fun mk_leaf(seq :~ Sequence) :~ Node:
-  Node(unsafe.freeze_vec(
-         for Array:
-           each val: seq
-           val))
+// TODO
+def dummy_node = leaf("todo")
+
+macro 'EMPTY_VEC': 'CVec[]'
 
                     
-class Tree(root :~ Node,
+class CVec(root :~ Node,
            size :~ NonnegInt,
-           height :~ NonnegInt):
+           height :~ NonnegInt,
+           tail :: Array):
   implements Indexable
   private implements Equatable
   private implements Appendable
 
   
-  constructor
-  | (): super(Node(), 0, 0)
-  | (root, size, height): super(root, size, height)
+  internal _CatVec
 
-  #//
-  internal _Vec
+  //what about making rrbtree the default but having it return
+  // a list for smaller values? perhaps up to dozens?
+  // would need to unify their apis, though
 
-  #//
+// NOTE: I want to go look at the source of List.iota.
+  // this should be easy to do from the docs
   expression
-  | 'Tree[]': '_Vec(Node(), 0, 0) :~ Tree'
-  | 'Tree[$stuff, ...]': '_Vec(Node(), 0, 0).add_all($stuff, ...) :~ Tree'
+  // TODO smaller (shift <= 5?) CVecs are just Vecs until cloned/catted/operated on?
+  | 'CVec[]': '_CatVec(Node(), 0, 0, vec()) :~ CVec'
+  | 'CVec[$(a :: Term)]': '_CatVec(Node(), 1, 0, vec($a))'
+  | 'CVec[$a, $b]': '_CatVec(Node(), 2, 0, vec($a, $b))'
+  | 'CVec[$a, $b, $c]': '_CatVec(Node(), 3, 0, vec($a, $b, $c)) :~ CVec'
+  | 'CVec[$a, $b, $c, $d, ...]': 'CVec[$a, $b, $c].add_all(List($d, ...)) :~ CVec'
+  | 'CVec()': '_CatVec(Node(), 0, 0, vec()) :~ CVec'
+  | 'CVec(~from: $lst)': '_CatVec(Node(), 0, 0, vec()).add_all($lst)'
+  | 'CVec($root, $size, $height, $tail)': '_CatVec($root, $size, $height, $tail) :~ CVec'
 
+ #//
+  def from:
+    fun (& lst):
+      match lst
+      | []: CVec[]
+      | List.cons()
+
+  #//
   reconstructor (root):
     error("todo")
   
   property balanced:
     root.balanced
 
-  private override equals(rhs :~ Tree, recur):
+  private override equals(rhs :~ CVec, recur):
     size == rhs.size && recur(root, rhs.root)
 
   private override hash_code(recur):
     recur(root)
 
+  private method tail_offset():
+    cond
+    | root.balanced && size > 32:
+        ((size - 1) bits.(>>) SHIFT_INC) bits.(<<) SHIFT_INC
+    | size > 32:
+        root.sizes[root.sizes.length() - 1]
+    | ~else: 0
+
   // get the element at `index`
   override get(index :~ Int):
-    recur get(node :~ Node = root, index = index, depth = height):
-      if node.balanced
-      | for values(n = node):
-          each i: 0 .. depth + 1
-          n.get(radix_of(index, depth - i))
-      | def (branch_index, subindex) = step(node, index, depth)
-        get(node.get(branch_index), subindex, depth - 1)
+    if index >= tail_offset()
+    | tail[radix_of(index, 0)]
+    | recur get(node :~ Node = root, index = index, depth = height):
+        if node.balanced
+        | for values(n = node):
+            each i: 0 .. depth + 1
+            n.get(radix_of(index, depth - i))
+        | def (branch_index, subindex) = step(node, index, depth)
+          get(node.get(branch_index), subindex, depth - 1)
 
   // functionally update the slot at `index` to `el`
   method set(index :~ Int, el):
-    def new_node = recur set(node :~ Node  = root, index = index, el = el, depth = height):
-      cond
-      | depth == 0:
-          node.set(radix_of(index, depth), el)
-      | node.balanced:
-          def branch_index = radix_of(index, depth)
-          node.set(branch_index, set(node.get(branch_index), index, el, depth - 1))
-      | ~else:
-          def (branch_index, subindex) = step(node, index, depth)
-          node.set(branch_index, set(node.get(branch_index), subindex, el, depth - 1))
+    if index >= tail_offset()
+    | CVec(root, size, height, set_vec(tail, index, el))
+    | def new_node = recur set(node :~ Node  = root, index = index, el = el, depth = height):
+        cond
+        | depth == 0:
+            node.set(radix_of(index, depth), el)
+        | node.balanced:
+            def branch_index = radix_of(index, depth)
+            node.set(branch_index, set(node.get(branch_index), index, el, depth - 1))
+        | ~else:
+            def (branch_index, subindex) = step(node, index, depth)
+            node.set(branch_index, set(node.get(branch_index), subindex, el, depth - 1))
 
-    Tree(new_node,  size,  height)
+      CVec(new_node, size, height, Node(vec("todo")))
 
   // trees that are a result of this method may not meet invariants, but rebalancing is costly
   // and future concatenations would restore the invariants due to rebalancing being done on concats.
   // TODO write some tests showing this
-  method take(pos :~ NonnegInt) :~ Tree:
+  method take(pos :~ NonnegInt) :~ CVec:
     cond
     | pos <= 0:
-        Tree()
+        CVec[]
     | pos >= size:
         this
     | ~else:
@@ -155,15 +183,15 @@ class Tree(root :~ Node,
         recur squash(node :~ Node = new_root, new_height = height):
           if node.size == 1 && new_height > 0
           | squash(node.first, new_height - 1)
-          | Tree(node, pos, new_height)
+          | CVec(node, pos, new_height, dummy_node)
         
 
-  method drop(pos :~ NonnegInt) :~ Tree:
+  method drop(pos :~ NonnegInt) :~ CVec:
     cond
     | pos <= 0:
         this
     | pos >= size:
-        Tree()
+        CVec[]
     | ~else:
         def new_root = recur drop(node :~ Node = root, index :~ Int = pos, depth :~ Int = height) :~ Node:
           cond
@@ -200,37 +228,56 @@ class Tree(root :~ Node,
               Node(unsafe.freeze_vec(new_children),
                    unsafe.freeze_vec(new_sizes))
 
-        def t :~ Tree:
+        def t :~ CVec:
           recur squash(node :~ Node = new_root, new_height = height):
             if node.size == 1 && new_height > 0
             | squash(node.first, new_height - 1)
-            | Tree(node, size - pos, new_height)
+            | CVec(node, size - pos, new_height, dummy_node)
 
         // TODO explain
         if t.height > 1 && t.root.sizes
         | def sizes = set_vec(t.root.sizes, t.root.size - 1, t.size)
-          Tree(Node(t.root.children, sizes), t.size, t.height) 
+          CVec(Node(t.root.children, sizes), t.size, t.height, dummy_node) 
         | t
+
+// TODO use :~
+  private method pushdown_tail(node :: Node, t :: Array, size, height, cc) :: CVec:
+    if height == 1
+    | #void
+    | #void
           
 
   // add `el` to end of vector
-  method add(el) :~ Tree:
-    def count = copyable_count(root, height)
-    if count == 0
-    | /* not enough space in original tree */
-      Tree(Node(vec(root, new_branch(el, height)),
-                root.sizes && vec(size, size + 1)),
-           size + 1,
-           height + 1)
-    | /* enough space in original tree */
-      Tree(build(root, count, height, el),
-           size + 1,
-           height)
+  method add(el) :~ CVec:
+    if tail.length() != MAX_WIDTH
+    | CVec(root, size + 1, height, add_vec(tail, el))
+    | def count = copyable_count(root, height)
+      if count == 0
+      | /* not enough space in original tree */
+        CVec(Node(vec(
+                   new_branch_node(root, tail, height), size + 1, height + 1,
+                   root.sizes && vec(size - tail.length(), tail.length()))),
+             size + 1,
+             height + 1,
+             vec(el))
+      | /* enough space in original tree */
+        pushdown_tail(root, tail, size, height, count)
+
+  macro 'construct($args, ...)':
+    'for values(t = CVec[]):
+      each:
+        el: (($args, ...) :~ Array)
+      t.add(el)'
+    
+  export:
+    construct
+
+    
 
 // TODO chunk adding here by 32 and add whole nodes at a time?
-  method add_all(els :~ Sequence) :~ Tree:
+  method add_all(els :~ Sequence) :~ CVec:
     #//
-    for values(t = Tree()):
+    for values(t = CVec[]):
       each el: els
       def a = for Array:
         each i: 0 .. 32
@@ -245,30 +292,31 @@ class Tree(root :~ Node,
         el: els
       t.add(el)
 
-  method add_node(node, sz) :~ Tree:
+  method add_node(node, sz) :~ CVec:
     def count = copyable_count(root, height)
     if count == 0
-    | Tree(Node(vec(root, node),
+    | CVec(Node(vec(root, node),
                 root.sizes && vec(size, size + sz)),
            size + sz,
-           height + 1)
-    | Tree(build_node(root, count, height, node, sz),
+           height + 1,
+           dummy_node)
+    | CVec(build_node(root, count, height, node, sz),
            size + sz,
-           height)
+           height, dummy_node)
 
   // TODO can't annotate multiple return values ?
-  method split(at :~ NonnegInt):/*~ (Tree, Tree)*/
+  method split(at :~ NonnegInt):/*~ (Vec, CVec)*/
     cond
-    | at == 0: values(Tree(), this)
-    | at == size: values(this, Tree())
+    | at == 0: values(CVec[], this)
+    | at == size: values(this, CVec[])
     | at > 0 && at < size: values(take(at), drop(at))
     | ~else: error(#'split, "invalid index")
     
 
-  private override method append(rhs :~ Tree):
+  private override method append(rhs :~ CVec):
     concat(rhs)
     
-  method concat(rhs :~ Tree) :~ Tree:
+  method concat(rhs :~ CVec) :~ CVec:
     cond
     | size == 0: rhs
     | rhs.size == 0: this
@@ -281,14 +329,14 @@ class Tree(root :~ Node,
                          #true),
           size + rhs.size)
 
-  method insert(at :~ NonnegInt, el) :~ Tree:
+  method insert(at :~ NonnegInt, el) :~ CVec:
     cond
     | at <= 0:
-        Tree().add(el).concat(this)
+        CVec[].add(el).concat(this)
     | at >= size - 1:
         this.add(el)
     | ~else:
-        let (l :~ Tree, r :~ Tree) = split(at)
+        let (l :~ CVec, r :~ CVec) = split(at)
         l.add(el).concat(r)
 
   // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
@@ -469,7 +517,7 @@ fun calc_height_and_wrap(root :~ Node, size :~ Int):
       break_when !(node is_a Node)
       values(node.first, i)
     
-  Tree(root, size, height)
+  CVec(root, size, height, dummy_node)
 
 /* TODO: is this a bug waiting to happen?
   We're calling this to set sizes and then assuming we can
@@ -581,3 +629,43 @@ fun new_branch(el, height):
   if height == 0
   | leaf(el)
   | Node(vec(new_branch(el, height - 1)))
+
+// TODO
+fun new_branch_node(node :~ Node, t :~ Array, height):
+  // wrong
+  if height == 0
+  | Node(node, t)
+  | Node(vec(new_branch_node(node, t, height - 1)))
+
+fun calc_height(v :~ CVec):
+    bits.length(math.max(0,
+                         v.size /* TODO add when tail optimzation done- v.tail.length() */
+                           - MAX_WIDTH)) div SHIFT_INC
+
+
+// TODO use what we know about CVec invariants and size of `from`
+// to construct the vector in a smarter fashion
+fun mk_vec(from :~ List) :~ CVec:
+  fun calc_height(size :~ Int, tail_len :~ Int):
+      bits.length(math.max(0,
+                           size - tail_len /* TODO add when tail optimzation done- v.tail.length() */
+                             - MAX_WIDTH)) div SHIFT_INC
+
+  if from.length() <= 32
+  | CVec(Node(),
+         from.length(),
+         calc_height(from.length(), from.length() mod 32),
+         unsafe.freeze_vec(for Array:
+                             each el: from
+                             el))
+  | recur go(l :~ List = from, acc :~ Array = vec(), node :~ Array = vec(), h = 0):
+      match l
+      | []:  CVec(Node(acc), from.length(), calc_height(from.length(), from.length() mod 32), node)
+      | List.cons(el, rst):
+          cond
+          | node.length() == MAX_WIDTH
+              && acc.length() == MAX_WIDTH:
+                go(rst, vec(Node(acc), new_branch(el, h)), vec(), h + 1)
+          | node.length() == MAX_WIDTH:
+              go(rst, add_vec(acc, Node(node)), vec(), h)
+          | ~else: go(rst, acc, add_vec(node, el), h)

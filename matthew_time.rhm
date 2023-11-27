@@ -108,7 +108,7 @@ def small_ctor_times:
     values(sz,
            bench_for "ctor" times iters with name t and size sz:
              #void: List.iota(sz)
-             #void: Tree().add_all(List.iota(sz))
+             #void: Vec().add_all(List.iota(sz))
              #void: rbtree.Vector.from(0..sz)
              #void: for Map (i: 0 .. sz):
                       values(i, i)
@@ -122,7 +122,7 @@ def ctor_times:
     values(sz,
            bench_for "ctor" times short_iters with name t and size sz:
              #void: List.iota(sz)
-             #void: Tree().add_all(List.iota(sz))
+             #void: Vec().add_all(List.iota(sz))
              #void: rbtree.Vector.from(0..sz)
              #void: for Map (i: 0 .. sz):
                       values(i, i)
@@ -136,7 +136,7 @@ def snoc_times:
     values(sz,
            bench_for "snoc" times iters with name t and size sz:
              (List.iota(sz)): t.append(["foo"])
-             (Tree().add_all(List.iota(sz))): t.add("foo")
+             (Vec().add_all(List.iota(sz))): t.add("foo")
              (rbtree.Vector.from(0..sz)): t.add("foo")
              (for Map (i: 0..sz): values(i, i)): t ++ { sz: "foo" }
              (rkt.#{list->vector}(List.iota(sz))): vec.#{vector-append}(t, rkt.vector("foo"))
@@ -148,7 +148,7 @@ def cons_times:
     values(sz,
            bench_for "cons" times short_iters with name t and size sz:
              (List.iota(sz)): List.cons("foo", t)
-             (Tree().add_all(List.iota(sz))): t.insert(0, "foo")
+             (Vec().add_all(List.iota(sz))): t.insert(0, "foo")
              (rbtree.Vector.from(0..sz)): for values(v = rbtree.Vector().add("foo")):
                                             each i: 0..sz
                                             v.add(t.get(i))
@@ -164,7 +164,7 @@ def add_times:
     values(sz,
            bench_for "add" times long_iters with name t and size sz:
              (List.iota(sz)): List.cons("foo", t)
-             (Tree().add_all(List.iota(sz))): t.add("foo")
+             (Vec().add_all(List.iota(sz))): t.add("foo")
              (rbtree.Vector.from(0..sz)): t.add("foo")
              (for Map (i: 0..sz): values(i, i)): t ++ { sz: "foo" }
              (rkt.#{list->vector}(List.iota(sz))): vec.#{vector-append}(t, rkt.vector("foo"))
@@ -176,7 +176,7 @@ def concat_times:
     values(sz,
            bench_for "++" times short_iters with name t and size sz:
              (List.iota(sz)): t ++ t
-             (Tree().add_all(List.iota(sz))): t ++ t
+             (Vec().add_all(List.iota(sz))): t ++ t
              (rbtree.Vector.from(0..sz)): for values(v = t):
                                             each i: 0..sz
                                             v.add(t.get(i))

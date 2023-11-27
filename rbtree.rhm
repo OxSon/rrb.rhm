@@ -1,10 +1,9 @@
-#lang rhombus
+#lang rhombus/static
  
 import "utils.rhm" open
 
-
 export:
-  Vector
+  Vec
   EMPTY_VEC
 
 /* persistent vector a 'la Clojure */
@@ -14,7 +13,7 @@ def MAX_WIDTH = 32
 def MASK = 31
 
 macro 'radix($index, $level)':
-  '((($index) bits.(>>) $level) bits.and MASK)'
+  '((($index) bits.(>>) ($level)) bits.and MASK)'
 
 module test:
   for (i: 0 .. 32):
@@ -26,54 +25,127 @@ module test:
     check: radix(i, 5)
            ~is 1
 
-class Node(data :: Array):
+class Node(data :: PVec):
   constructor
-  | (): super(Array.make(MAX_WIDTH, #false))
+  | (): super(unsafe.freeze_vec(Array.make(MAX_WIDTH, #false)))
   | (data :: Array):
       def _data = Array.make(MAX_WIDTH, #false)
       Array.copy_from(_data, 0, data)
-      super(_data)
-
-  property size: data.length()
+      super(unsafe.freeze_vec(_data))
 
 
 module test:
-  check: Node(Array(1, 2, 3, 4)).size
+  check: Node().data.length()
+         ~is MAX_WIDTH
+  check: Node(Array(1, 2, 3, 4)).data.length()
          ~is MAX_WIDTH
 
-/* TODO
+
+/* TODO 
   - optimization: transients
   - optimization: have a 'head' in addition to 'tail' kept separately? would allow constant prepend and append
 */
-class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array):
-  constructor
-  | (): super(Node(), 0, BITS, Array())
-  | (root, size, shift, tail): super(root, size, shift, tail)
+class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: PVec):
+  implements Indexable
+  private implements Equatable
+  private implements Appendable
+  implements Sequenceable
+  
+  export from
 
-  fun from(seq :: Sequence):
-    for values(v = EMPTY_VEC):
-      each el: seq
-      v.add(el)
-      
-  export:
-    from
+
+  // NOTE: I want to go look at the source of List.iota.
+  // this should be easy to do from the docs                     
+  internal _V
+  expression
+  | 'Vector[]': '_V(Node(), 0, 0, pvec()) :~ Vector'
+  | 'Vector[$(a :: Term)]': '_V(Node(), 1, 0, pvec($a)) :~ Vector'
+  | 'Vector[$a, $b]': '_V(Node(), 2, 0, pvec($a, $b)) :~ Vector'
+  | 'Vector[$a, $b, $c]': '_V(Node(), 3, 0, pvec($a, $b, $c)) :~ Vector'
+  | 'Vector[$a, $b, $c, $d, ...]': 'Vec[$a, $b, $c].add_all(List($d, ...)) :~ Vector'
+  | 'Vector()': '_V(Node(), 0, 0, pvec()) :~ Vector'
+  | 'Vector(~from: $lst)': '_V(Node(), 0, 0, pvec()).add_all($lst) :~ Vector'
+  | 'Vector($root, $size, $height, $tail)': '_V($root, $size, $height, $tail) :~ Vector'
+
+
+  // doesn't work as described in docs?
+  #//
+  sequence '$lhs: $rhs':
+    '(~outer_binds:
+        p = $rhs,
+      ~recur_binds:
+        pos = 0,
+      ~head_guard:
+        pos < 2,
+      ~inner_binds:
+        $lhs = if pos == 0 | Posn.y(p) | Posn.x(p),
+      ~recur_args:
+        (pos + 1))'
+    static_info:
+      '(($statinfo_meta.index_result_key,
+         $(annot_meta.parse_to_packed_statinfo('Int'))))'
+
+  
+  override method to_sequence():      
+    Sequence.make(~initial_position: [0, array_for(0)],
+                  ~continue_at_position: fun (pos): def [i, _] = pos
+                                                    i < size,                 
+                  ~position_to_next: fun (pos):
+                                       def [i, arr] = pos
+                                       def nexti = i + 1
+                                       if nexti mod 32 == 0
+                                       | [nexti, array_for(nexti)]
+                                       | [nexti, arr],                    
+                  ~position_to_element: fun (pos):                                            
+                                          def [i :~ Number, arr :~ PVec] = pos
+                                          arr.get(radix(i, 0))) // TODO why do i have to use .get here?
+
+  
+  private override equals(rhs :~ Vector, recur):
+    size == rhs.size
+      && recur(tail, rhs.tail)
+      && recur(root, rhs.root)
+
+  private override hash_code(recur):
+    Equatable.hash_code_combine(recur(root),
+                                for values(hc = 0):
+                                  each i: 0 .. (tail :~ Array).length()
+                                  Equatable.hash_code_combine(hc, tail.get(i)))
+
+  // provide it i suppose even though it is slow (linear)
+  private override append(rhs :~ Vector) :~ Vector:
+    cond
+    | size == 0: rhs
+    | rhs.size == 0: this
+    | ~else:
+        recur f(i = 0, v :~ Vector = this, arr :~ PVec = array_for(0)):
+          cond
+          | i >= rhs.size:
+              v
+          | i >= rhs.size - rhs.tail_offset():
+              for values(v = v :~ Vector):
+                each a: (rhs.tail :~ Array)
+                v.add(a)
+          | i mod MAX_WIDTH == 0:
+              let new_arr = array_for(i)
+              f(i + 1, v.add(new_arr.get(0)), new_arr)
+          | ~else:
+              f(i + 1, v.add(arr.get(radix(i, 0))), arr)
+
         
   method add(el) :~ Vector:
     if size - tail_offset() < MAX_WIDTH
-    | def new_tail = Array.make(tail.length() + 1)
-      
-      Array.copy_from(new_tail, 0, tail)
-      new_tail[tail.length()] := el
-      
-      Vector(root, size + 1, shift, new_tail)
+    | Vector(root, size + 1, shift, tail.add(el))
     | // is there room in current root without overflow to a new level?
       def overflow = (size bits.(>>) BITS) > (1 bits.(<<) shift)
       Vector(if overflow | Node(Array(root, new_branch(shift, tail)))
-                         | push_tail(shift, root, tail),
+                         | // TODO something different if shift == 0
+                           // or if root[0] == #false?
+                           push_tail(shift, root, tail),
              size + 1,
              if overflow | shift + BITS
                          | shift,
-             Array(el))
+             pvec(el))
 
   method add_all(seq :: Sequence) :~ Vector:
     for values(v = this):
@@ -82,33 +154,32 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
   
 
 
-  method get(idx :: Int) :~ Vector:
-    array_for(idx)[idx bits.and MASK]
+  override get(idx :: Int) :~ Vector:
+    array_for(idx).get(idx bits.and MASK)
 
   method set(idx :: Int, el) :~ Vector:
     cond
-    | idx == size:
-        add(el)
-    | idx >= tail_offset():
-        
-        def new_tail = tail.copy()
-        tail[idx bits.and MASK] := el
+    | idx < size && idx >= tail_offset():
+        def new_tail = (tail :~ Array).copy()
+        new_tail[idx bits.and MASK] := el
         Vector(root, size, shift, new_tail)
-    | idx >= 0:
+        
+    | idx < size && idx >= 0:
         def new_root:
-          recur set(level = shift, node = root) :: Node:
-            def ret = Node(node.data.copy())
+          recur set(level = shift, node :~ Node = root) :: Node:
+            def data = node.data.copy()
             if level == 0
-            | ret.data[idx bits.and MASK] := el
+            | data[idx bits.and MASK] := el
             | def subidx = (idx bits.(>>) level) bits.and MASK
-              ret.data[subidx] := set(level - BITS, node.data[subidx])
+              data[subidx] := set(level - BITS, node.data[subidx])
               
-            ret
+            Node(data)
             
         Vector(new_root, size, shift, tail)
-    | ~else: error(#'Vector, "index out of bounds")
+    | ~else: error(#'Vec, "index out of bounds")
         
 
+  // TODO: sus! redo
   method take(pos :: Int) :~ Vector:
     cond
     | pos <= 0:
@@ -122,21 +193,24 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
         Array.copy_from(new_tail, 0, tail, 0, new_tail_len)
         Vector(root, pos, shift, new_tail)
     | ~else:
-        def new_root = recur take(node = root, level = shift):
+        def new_root = recur take(node :: Node = root, level = shift):
           def subidx = radix(size - 1, level)
           
           if level == 0
-          | Node(vec_take(node.data, subidx + 1))
-          | def new_children = vec_take(node.data, subidx + 1)
+          | Node(node.data.take(subidx + 1))
+          | def new_children = node.data.take(subidx + 1)
             new_children[subidx] := take(node.data[subidx], shift - BITS)
             Node(new_children)
 
         // TODO is this needed?
-        recur squash(node = new_root, new_shift = shift):
-          if node.size == 1 && new_shift > 0
+        recur squash(node :: Node = new_root, new_shift = shift):
+          if !(node.data[1]) /* node.data.length() == 1
+                                 ^- previous, but nodes always have len-32 backing arrays, nonexistent entries set to #false*/
+            && new_shift > 0
           | squash(node.data[0], new_shift - BITS)
-          | Vector(node, pos, new_shift)
+          | Vector(node, pos, new_shift, error("what to put as new tail?"))
 
+  // TODO: sus! redo
   method drop(pos :: Int) :~ Vector:
     cond
     | pos <= 0:
@@ -148,27 +222,27 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
         Array.copy_from(new_tail, 0, tail, tail.length() - (size - pos))
         Vector(Node(), size - pos, 0, new_tail)
     | ~else:
-        def new_root = recur drop(node = root, level = shift):
+        def new_root = recur drop(node :: Node = root, level = shift):
           def subindex = radix(pos, level)
           
           if level == 0
-          | Node(vec_drop(node.data, subindex))
-          | def new_children = vec_drop(node.data, subindex)
+          | Node(node.data.drop(subindex))
+          | def new_children = node.data.drop(subindex)
             def new_child = drop(node.data[subindex], level - BITS)
             new_children[0] := new_child
                 
             Node(new_children)
 
         // TODO do i need this?
-        recur squash(node = new_root, new_shift = shift):
-          if node.size == 1 && new_shift > 0
+        recur squash(node :: Node = new_root, new_shift = shift):
+          if !(node.data[1]) /* node.size == 1 */ && new_shift > 0
           | squash(node.data[0], new_shift - 5)
           | Vector(node, size - pos, new_shift, tail)
 
-  method pop():
+  method pop() :~ Vector:
     cond
     | size == 0:
-        error(#'Vector, "cannot pop an empty vector")
+        error(#'Vec, "cannot pop an empty vector")
     | size == 1:
         EMPTY_VEC
     | size - tail_offset() > 1:
@@ -177,7 +251,7 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
         Vector(root, size - 1, shift, new_tail)
     | ~else:
         def new_tail = array_for(size - 2)
-        def new_root = pop_tail(shift, root) || Node()
+        def new_root :: Node = pop_tail(shift, root) || Node()
         
         if shift > BITS && !(new_root.data[1])
         | Vector(new_root.data[0], size - 1, shift - BITS, new_tail)
@@ -190,6 +264,7 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
     | all where all = size: values(this, Vector())
 
 
+  // TODO inefficient
   method to_list() :: List:
     for List:
       each i: 0 .. size
@@ -208,62 +283,79 @@ class Vector(root :: Node, size :: NonnegInt, shift :: NonnegInt, tail :: Array)
         def new_child = pop_tail(level - BITS, node.data[subidx])
         if !new_child && subidx == 0
         | #false
-        | def ret = Node(node.data.copy())
-          ret.data[subidx] := new_child
-          ret
+        | def data =node.data.copy()
+          data[subidx] := new_child
+          Node(data)
     | subidx == 0:
         #false
     | ~else:
-        def ret = Node(node.data.copy())
-        ret.data[subidx] := #false
-        ret
+        def data = node.data.copy()
+        data[subidx] := #false
+        Node(data)
 
   private method push_tail(level :: Int, parent :: Node, tail_node :: Array) :: Node:
     def subidx = ((size - 1) bits.(>>) level) bits.and MASK
-    def ret = Node(parent.data.copy())
+    def data = parent.data.copy()
 
-    ret.data[subidx] := if level == BITS
+    data[subidx] := if level == BITS
     | Node(tail_node)
     | def child = parent.data[subidx]
       if child
       | push_tail(level - BITS, child, tail_node)
       | new_branch(level - BITS, tail_node)
       
-    ret
+    Node(data)
 
-  private method tail_offset():
+// todo private
+ // private
+  method tail_offset():
     if size < 32
     | 0
     | ((size - 1) bits.(>>) BITS) bits.(<<) BITS
 
-
-  method array_for(idx):
+// todo private
+  //private method array_for(idx) :~ Vec:
+  method array_for(idx) :~ PVec:
     cond
     | idx < 0 || idx >= size:
         error(#'Vector, "index out of bounds")
     | idx >= this.tail_offset():
         tail
     | ~else:
-        recur f(node = root, i = shift):
+        recur step(node :~ Node = root, i = shift):
           if i == 0
           | node.data
-          | f(node.data[(idx bits.(>>) i) bits.and MASK], i - BITS)
+          | step(node.data[(idx bits.(>>) i) bits.and MASK], i - BITS)
+
+
             
 /* helper functions */
-          
-fun new_branch(level :: Int, data :: Array) :: Node:
-  if level == 0
+
+
+
+fun from(seq :: Sequence) :~ Vector:
+  for values(v  = EMPTY_VEC :~ Vector):
+    each el: seq
+    v.add(el)
+    
+fun new_branch(level :~ Int, data :~ Array) :: Node:
+  //if level == 0
+  if level <= 0
   | Node(data)
   | Node(Array(new_branch(level - BITS, data)))
 
-
-def EMPTY_VEC = Vector()
+// TODO smarter way to do this?
+fun calc_shift(v :~ Vector):
+    calc_height(v :~ Vector) * BITS
+fun calc_height(v :~ Vector):
+    bits.length(math.max(0, v.size - v.tail.length() - MAX_WIDTH)) div BITS
+def EMPTY_VEC :~ Vector = Vector[]
 
 module test:
   check: EMPTY_VEC.add(1).to_list()
          ~is [1]
 
-  let v:
+  let v :: Vector:
     for values(v = EMPTY_VEC):
       each i: 0 .. (MAX_WIDTH + 10)
       v.add(i)
@@ -272,11 +364,23 @@ module test:
     check: v.get(i)
            ~is i
 
-  let v2 = v.set(0, -1)
+  let v2 :: Vector = v.set(0, -1)
   check: v.get(0) ~is 0
          v2.get(0) ~is -1
          v.root.data[1] === v2.root.data[1] ~is #true
 
-  let v = Vector.from(1..100)
+  let v  :: Vector = Vector.from(1..100)
   check: v.size ~is 99
          v.get(12) ~is 13
+
+  check: v.set(99, -1)
+         ~raises "out of bounds"
+
+  let l :: List = List.iota(100)
+  let v :: Vector = Vector.from(0..100)
+  let idx = math.random(100)
+ // let (ll, lr) = values(
+
+  check: l.drop_right(100 - idx) ~is v.take(idx).to_list()
+         l.drop_left(idx) ~is v.drop(idx).to_list()
+         
