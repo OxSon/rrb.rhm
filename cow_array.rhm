@@ -1,0 +1,250 @@
+#lang rhombus/static/and_meta
+
+/* Array utilities for imitating COW immutable indexed sequences */
+export all_defined
+
+import lib("racket/base.rkt") as r:
+  rename:
+    #{vector-immutable} as cow // for persistent vector
+    #{immutable?} as frozen
+
+  expose frozen
+  
+import lib("racket/vector.rkt") as vector:
+  rename:
+    #{vector-drop} as drop
+    #{vector-drop-right} as drop_right
+    #{vector-split-at} as split
+    #{vector-take} as take
+    #{vector-append} as concat // we use this for our mutable arrays only, or internally in this module
+    #{vector-map} as map
+
+
+annot.macro 'Cow':
+  let '$(cow :: annot_meta.Parsed)' = 'Array'
+  let (pred, sis) = annot_meta.unpack_predicate(cow)
+  annot_meta.pack_predicate('r.#{vector?} && frozen',
+                            sis)
+
+macro 'cow($el, ...)':
+  '(r.cow($el, ...) :~ Cow)'
+
+def EMPTY :~ Cow = cow()
+
+fun cow_lst(arr :~ Array) :~ List:
+  r.#{vector->list}(arr)
+
+module test:
+  check: cow_lst(Array())
+         ~is []
+  check: cow_lst(Array(1, 2, 3, 4))
+         ~is [1, 2, 3, 4]
+
+fun cow_map(f :~ Function.of_arity(1), arr :~ Array) :~ Cow:
+  unsafe.freeze(vector.map(f, arr))
+  
+fun cow_set(arr :~ Array, idx, el) :~ Cow:
+  let ret = Array.copy(arr)
+  ret[idx] := el
+  unsafe.freeze(ret)
+    
+fun cow_add(arr :~ Array, el) :~ Cow:
+  let ret = Array.make(arr.length() + 1)
+  Array.copy_from(ret, 0, arr)
+  ret[arr.length()] := el
+  unsafe.freeze(ret)
+    
+fun cow_drop(arr :~ Array, pos) :~ Cow:
+   cond
+   | pos < 0 || pos > arr.length(): error(#'cow_drop, "index out of range")
+   | pos == 0: arr
+   | pos == arr.length(): EMPTY
+   | ~else: unsafe.freeze(vector.drop(arr, pos))
+
+fun cow_drop_right(arr :~ Array, pos) :~ Cow:
+  cond
+  | pos < 0 || pos > arr.length(): error(#'cow_drop_right, "index out of range")
+  | pos == 0: EMPTY
+  | pos == arr.length(): arr
+  | ~else: unsafe.freeze(vector.drop_right(arr, pos))
+
+fun cow_split(arr :~ Array, pos) :~ values(Cow, Cow):
+  cond
+  | pos == 0:
+      values(EMPTY, arr)
+  | pos == arr.length():
+      values(arr, EMPTY)
+  | pos > 0 && pos < arr.length():
+      values(vector.take(arr, pos),
+             vector.drop(arr, pos))
+  | ~else: error(#'cow_split, "index out of range")
+
+fun cow_take(arr :~ Array, pos) :~ Cow:
+  cond
+  | pos < 0 || pos > arr.length(): error(#'cow_take, "index out of range")
+  | pos == 0: EMPTY
+  | pos == arr.length(): arr
+  | ~else: unsafe.freeze(vector.take(arr, pos))
+
+fun
+| cow_append(l :~ Array, r :~ Array) :~ Cow:
+    unsafe.freeze(l ++ r)
+| cow_append(l :~ Array, c :~ Array, r :~ Array) :~ Cow:
+    unsafe.freeze(l ++ c ++ r)
+
+fun cow_copy(arr :~ Array) :~ Cow:
+  unsafe.freeze(arr.copy())
+
+fun cow_copy_mut(arr :~ Array) :~ Array:
+  arr.copy()
+
+
+fun
+| cow_from() :~ Cow:
+    r.cow()
+| cow_from(a :: Array) :~ Cow:
+    unsafe.freeze(a.copy())
+| cow_from(s :: Sequence) :~ Cow:
+    unsafe.freeze(
+      for Array (si: s):
+        si)
+  
+namespace unsafe: 
+  import lib("racket/unsafe/ops.rkt") as unsafe
+
+  fun freeze(v :~ Array) :~ Cow:
+    unsafe.#{unsafe-vector*->immutable-vector!}(v)
+      
+  export freeze
+
+module test:
+  check: Array(1, 2, 3) :: Cow
+         ~raises ""
+         
+  check: 3 :: Cow
+         ~raises ""
+         
+  check: cow(1, 2, 3) :: Cow
+         ~completes
+
+  check: cow_add(cow(1, 2, 3), 4)
+         ~completes
+         
+  check: cow_set(cow(1, 2, 3), 1, -1)
+         ~is_now cow(1, -1, 3)
+
+  check: (cow(1, 2, 3) :: Cow)[0] := -1
+         ~raises ""
+
+  check: unsafe.freeze(Array(1, 2, 3))
+         ~is_now cow(1, 2, 3)
+
+
+  check: cow_add(cow(1, 2, 3), 4)
+         ~is_now cow(1, 2, 3, 4)
+
+  check: cow(1, 2, 3) ++ cow(4, 5)
+         ~is_now cow(1, 2, 3, 4, 5)
+
+  check: cow(#'a, #'b, #'c)
+           ++ cow(1, 2, 3)
+           ++ cow("the industrial revolution and its consequences...")
+         ~is_now cow(#'a, #'b, #'c,
+                     1, 2, 3,
+                     "the industrial revolution and its consequences...")
+
+  check: cow_drop(cow(1, 2, 3), 1)
+         ~is_now cow(2, 3)
+  
+  check: cow_drop_right(cow(1, 2, 3), 1)
+         ~is_now cow(1, 2)
+  
+  let (l, r) = cow_split(cow(1, 2, 3, 4), 2)
+  check: l ~is_now cow(1, 2)
+         r ~is_now cow(3, 4)
+
+  check: cow_take(cow(1, 2, 3), 2)
+         ~is_now cow(1, 2)
+
+  check: cow_take(cow(1, 2, 3, 4, 5), 0)
+         ~is cow_drop(cow(1, 2, 3, 4, 5), 5)
+
+  check: cow_take(cow(1, 2),3)
+         ~raises ""
+
+  check: cow_drop(cow(3, 4), 10)
+         ~raises ""
+
+  check: cow_take(cow(), -1)
+         ~raises ""
+
+  check: cow_drop(cow(100, #false, "fjlskdgjlk"), -12)
+         ~raises ""
+
+  check: cow_drop_right(cow(100, #false, "fjlskdgjlk"), -12)
+         ~raises ""
+
+  let size = 100
+  let pos = 13
+  let p = cow_from(0..size)
+  let p_drop = cow_drop(p, pos)
+  let p_drop_right = cow_drop_right(p, pos)
+  let p_take = cow_take(p, pos)
+  let p_append = cow_append(p, p)
+
+  check: size - pos ~is p_drop.length()
+         size - pos ~is p_drop_right.length()
+         pos ~is p_take.length()
+
+  check: cow_drop_right(p_drop, pos)
+         ~is cow_drop(p_drop_right, pos)
+
+  check: p_take
+         ~is cow_drop_right(p, size - pos)
+
+  check: cow_drop(p, 0) === p
+         ~is #true
+  check: cow_drop_right(p, p.length()) === p
+         ~is #true
+  check: cow_take(p, p.length()) === p
+         ~is #true
+
+  let (l1, r1) = cow_split(p, 0)
+  let (l2, r2) = cow_split(p, p.length())
+
+  check: l1 ~is EMPTY
+         r2 ~is EMPTY
+
+  check: r1 ~is p
+         l2 ~is p
+
+  check: cow_drop_right(p, 0)
+         ~is EMPTY
+
+  check: cow_split(p, 1000000000)
+         ~raises ""
+
+  check: cow_append(cow(1), cow(2, 3), cow(4, 5, 6))
+         ~is cow(1, 2, 3, 4, 5, 6)
+
+  let p = cow(1, 2, 3)
+  let p2 = cow_copy(p)
+  check: p === p2 ~is #false
+         p ~is p2
+
+  check: cow_copy_mut(p) ~is_now Array(1, 2, 3)
+         cow_copy_mut(p) == p ~is #false
+         
+  check: cow_from()
+         ~is EMPTY
+
+  let a = Array(1, 2, 3)
+  let c = cow_from(a)
+
+  check: c ~is_now a
+  check: c == a ~is #false
+
+
+  check: cow_map(fun (x): x + 1, cow(1, 2, 3))
+         ~is cow(2, 3, 4)
+         
