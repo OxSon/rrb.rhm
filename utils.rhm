@@ -1,249 +1,37 @@
-#lang rhombus/static/and_meta //static/and_meta
+#lang rhombus/static/and_meta
 
 export all_defined
-  
 
-/* Array utilities for imitating COW immutable indexed sequences */
-  
-import lib("racket/base.rkt") as r:
-  rename:
-    #{vector-immutable} as pvector // for persistent vector
-    #{immutable?} as frozen
+fun filter(f, l):
+    match l
+    | []: []
+    | List.cons(fst, rst):
+        if f(fst)
+        | filter(f, rst)
+        | List.cons(fst, filter(f, rst))
 
-  expose frozen
-  
-import lib("racket/vector.rkt") as vector:
-  rename:
-    #{vector-drop} as vec_drop
-    #{vector-drop-right} as vec_drop_right
-    #{vector-split-at} as vec_split
-    #{vector-take} as vec_take
-    #{vector-append} as array_append // we use this for our mutable arrays only, or internally in this module
-
-
-annot.macro 'PVec':
-  annot_meta.pack_predicate('r.#{vector?} && frozen',
-                            '(($(statinfo_meta.dot_provider_key),
-                               vec_dot_provider))')
-
-macro
-| 'as_frozen ($name = $init):
-     $exp
-     ...':
-    'unsafe.freeze_vec(block:
-                         let $name = $init
-                           $exp
-                           ...
-                           $name) :~ PVec'
-| 'as_frozen $name:
-     $exp
-     ...':
-    'unsafe.freeze_vec(block:
-                         $exp
-                         ...
-                         $name)'
-
-
-
-// within $body, $name is mutable; value `thaw x: body` is value of `body; x`
-expr.macro 'thaw $name:
-              $exp
-              ...':
-  'as_frozen ($name = ($name).copy()):
-     $exp
-     ...'
-
-// within $body, $name is mutable and result of $body bound back to $name as a frozen vec after
-
-defn.macro 'thaw $name:
-              $exp
-              ...':
-  'def $name = thaw $name:
-     $exp
-     ...'
-
-// TODO fix this up so that our Vec type is ergonomic
-dot.macro 'vec_dot_provider $v . $a':
-  block:
-    let len = '(Array.length($v))'
-    match a
-    | 'length': 'fun (): $len'
-    | 'get': 'fun (i): $v[i]'
-    | 'set': 'fun (i, el):
-                as_frozen ret:
-                  let ret = Array.copy($v)
-                  ret[i] := el'
-    | 'add': 'fun (el): (as_frozen ret:
-                           let ret = Array.make($len + 1)
-                           Array.copy_from(ret, 0, $v)
-                           ret[$len] := el) :~ PVec'
-    | 'drop': 'fun (pos): cond
-                          | pos < 0 || pos > $len: error(#'TODO, "throw error?")
-                          | pos == 0: $v
-                          | pos == $len: PVec.Mt
-                          | ~else: unsafe.freeze_vec(vector.vec_drop($v, pos))'
-    | 'drop_right': 'fun (pos): unsafe.freeze_vec(vector.vec_drop_right($v, pos))'
-    | 'split': 'fun (pos):
-                    let (l, r) = vector.vec_split($v, pos)
-                    values(unsafe.freeze_vec(l), unsafe.freeze_vec(r))'
-    | 'take': 'fun (pos): cond
-                          | pos < 0 || pos > $len: error(#'TODO, "?")
-                          | pos == 0: PVec.Mt
-                          | pos == $len: $v
-                          | ~else: unsafe.freeze_vec(vector.vec_take($v, pos))'
-    | 'append':
-        // TODO results of pvec.append(...).append(...) are failing because Array doesn't have public .append,
-        // i.e. ret type of .append is not flowing thru the system correctly
-        'fun (u :~ PVec): ($v ++ u :~ PVec)'
-    | 'copy': 'fun (): freeze($v.copy()) :~ PVec'
-    | '#{#%index-get}': 'fun (i): $v.get(i)'
-    | ~else:  '($v :: Array) . $a' // tODO no work?
-
-
-operator (l :: PVec) ++ (r :: PVec):
-    unsafe.freeze_vec(vector.array_append(l, r)) :~ PVec
-
-
-namespace PVec:
-  def Mt :~ PVec = r.pvector()
-
-  fun
-  | from() :~ PVec:
-      r.pvector()
-  | from(s :: Sequence) :~ PVec:
-      for values(v = pvec()) (si: s):
-         v.add(si)
-  | from(a :: Array) :~ PVec:
-      unsafe.freeze_vec(a.copy())
-  | from(a, ...) :~ PVec:
-      pvec().add_all(a, ...)
-
-  export:
-    Mt
-    from
-
-  
-namespace unsafe: 
-  import lib("racket/unsafe/ops.rkt") as unsafe:
-    rename:
-      #{unsafe-vector*->immutable-vector!} as freeze_vec
-
-  fun freeze_vec(v :~ Array) :~ PVec:
-    unsafe.freeze_vec(v)
-      
-  export freeze_vec
-
-macro 'pvec($el, ...)':
-  '(r.pvector($el, ...) :~ PVec)'
-
-def Mt :~ PVec = r.pvector()
+fun id (x):
+  x
 
 module test:
-  check: Array(1, 2, 3) :: PVec
-         ~raises ""
+  check: id({#'a: 1})
+         ~is {#'a: 1}
          
-  check: 3 :: PVec
-         ~raises ""
-         
-  check: pvec(1, 2, 3) :: PVec
-         ~completes
-         
-  check: (Array(1, 2, 3) :~ PVec).add(4) :: PVec
-         ~completes
-         
-  check: pvec(1, 2, 3).set(1, -1)
-         ~is_now pvec(1, -1, 3)
+  check: filter(fun (x): x mod 2 == 0,
+                List.iota(10))
+         ~is [1, 3, 5, 7, 9]
 
-  check: (pvec(1, 2, 3) :: PVec)[0] := -1
-         ~raises ""
+  check: filter(id,
+                [])
+         ~is []
 
-  check: unsafe.freeze_vec(Array(1, 2, 3))
-         ~is_now pvec(1, 2, 3)
+  check: filter(fun (x): x > 0,
+                [-1, -2, -3])
+         ~is [-1, -2, -3]
 
-
-  check: pvec(1, 2, 3).add(4)
-         ~is_now pvec(1, 2, 3, 4)
-
-  check: pvec(1, 2, 3).append(pvec(4, 5))
-         ~is_now pvec(1, 2, 3, 4, 5)
-
-  check: pvec(#'a, #'b, #'c)
-           ++ pvec(1, 2, 3)
-           ++ pvec("the industrial revolution and its consequences...")
-         ~is_now pvec(#'a, #'b, #'c,
-                      1, 2, 3,
-                      "the industrial revolution and its consequences...")
-
-  check: pvec(1, 2, 3).drop(1)
-         ~is_now pvec(2, 3)
-  
-  check: pvec(1, 2, 3).drop_right(1)
-         ~is_now pvec(1, 2)
-  
-  let (l, r) = pvec(1, 2, 3, 4).split(2)
-  check: l ~is_now pvec(1, 2)
-         r ~is_now pvec(3, 4)
-
-  check: pvec(1, 2, 3).take(2)
-         ~is_now pvec(1, 2)
-
-  // The first example completes and the second fails, but they really should both succeed
-  check: (pvec(#'a, #'b, #'c).append(pvec(1,2,3)) :~ PVec).append(pvec("foo"))
-         ~is_now Array(#'a, #'b, #'c, 1, 2, 3, "foo")
-
-  // fails, wontfix for now, just plan on using `++` where neeed
-  //check: (pvec(#'a, #'b, #'c).append(pvec(1,2,3)) /* :~ PVec */).append(pvec("foo"))
-  //       ~completes
-
-  check: (pvec(#'a, #'b, #'c) ++ pvec(1, 2, 3) ++ pvec("foo")) :: PVec
-         ~completes
-
-  check: pvec(#'a, #'b, #'c) ++ pvec(1) ++ pvec("foo", 2, 3)
-         ~completes
-
-  check: pvec(1, 2, 3, 4, 5).take(0)
-         ~is pvec(1, 2, 3, 4, 5).drop(5)
-
-  check: pvec(1, 2).take(3)
-         ~raises ""
-
-  check: pvec(3, 4).drop(10)
-         ~raises ""
-
-  check: pvec().take(-1)
-         ~raises ""
-
-  check: pvec(100, #false, "fjlskdgjlk").drop(-12)
-         ~raises ""
-
-/*
-  | 'drop':
-  | 'drop_right': 
-  | 'split': 
-  | 'take': 
-  | 'append':
-*/
-  let size = 100
-  let pos = 13
-  let p = PVec.from(0..size)
-  let p_drop = p.drop(pos)
-  let p_drop_right = p.drop_right(pos)
-  let p_take = p.take(pos)
-  let p_append = p.append(p)
-
-  check: size - pos ~is p_drop.length()
-         size - pos ~is p_drop_right.length()
-         pos ~is p_take.length()
-
-  check: p_drop.drop_right(pos)
-         ~is p_drop_right.drop(pos)
-
-  check: p_take
-         ~is p.drop_right(size - pos)
-         
-
-
-/* some utility stuff. some of it nt really used atm */
+  check: filter(fun (x): x > 0,
+                [1, 2, 3])
+         ~is []
 
 macro 'TODO $(msg :: String)':
   'error("TODO: " +& $msg)'
@@ -253,8 +41,22 @@ macro 'if_not $condition ...:
   'if !($condition ...)
    | $do
    | #void'
-
-
+  
+macro
+| 'debug $with:
+         $body':
+    'try:
+       $body
+       ~catch exn:
+         $with(exn)'
+| 'debug ~rethrow $with:
+       $body':
+    'try:
+       $body
+       ~catch exn:
+         $with(exn)
+         throw exn'
+    
 module test:       
   check: TODO "foo"
          ~raises "foo"
@@ -269,6 +71,30 @@ module test:
   check: inv(0)
          ~is #void
 
+  check: debug println:
+           1 / 0
+         ~completes
+
+  check: debug throw:
+           1 / 0
+         ~raises ""
+
+  check: debug (fun (exn): exn):
+           1 / 0
+         ~completes
+
+  check: debug (fun (exn :~ Exn): exn.message):
+           1 / 0
+         ~is "/: division by zero"
+
+  check: 1 + debug (fun (exn :~ Exn): TODO "foo"):
+           1 / 0
+         ~raises "foo"
+
+  check: 1 + debug (fun (exn :~ Exn): 2):
+             1 / 0
+         ~is 3
+           
 expr.macro 'docurry $f: $x ...':
   /*
   fun (_?, ...): dothing($cached_arg, _?, ...)
