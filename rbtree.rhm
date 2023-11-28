@@ -8,6 +8,10 @@ export:
   Vector
   EMPTY
 
+// comment out during dev process for extra checks
+import:
+  rhombus.(:~) as ::
+
 /* persistent vector a 'la Clojure */
 
 def BITS = 5
@@ -80,7 +84,7 @@ class Node(data :: Cow):
     | (data[0] is_a Node):
         PrintDesc.list("<",
                        for List:
-                         each node :~ Node: data
+                         each node :: Node: data
                          break_when !node
                          PrintDesc.concat(node.describe_data(), PrintDesc.or(";", PrintDesc.newline())),
                        ">")
@@ -88,13 +92,13 @@ class Node(data :: Cow):
         PrintDesc.or(
           PrintDesc.list("<",
                          for List:
-                           each node :~ Node: data
+                           each node :: Node: data
                            break_when !node
                            PrintDesc.concat(node.describe_data(), PrintDesc.or(";", PrintDesc.newline()),
                          ">"),
           PrintDesc.list("<",
                          for List:
-                           each node :~ Node: data
+                           each node :: Node: data
                            break_when !node
                            PrintDesc.concat(node.describe_data(), PrintDesc.newline()),
                          ">")) */
@@ -134,16 +138,16 @@ class Vector(root :: Node = Node(),
   // this should be easy to do from the docs                     
   internal _V
   expression
-  | 'Vector[]': '_V(Node(), 0, 0, cow()) :~ Vector'
-  | 'Vector[$(a :: Term)]': '_V(Node(), 1, 0, cow($a)) :~ Vector'
-  | 'Vector[$a, $b]': '_V(Node(), 2, 0, cow($a, $b)) :~ Vector'
-  | 'Vector[$a, $b, $c]': '_V(Node(), 3, 0, cow($a, $b, $c)) :~ Vector'
-  | 'Vector[$a, $b, $c, $d, ...]': 'Vector[$a, $b, $c].add_all(List($d, ...)) :~ Vector'
-  | 'Vector()': '_V(Node(), 0, 0, cow()) :~ Vector'
-  | 'Vector($root, $size, $height, $tail)': ' _V($root, $size, $height, $tail) :~ Vector'
+  | 'Vector[]': '_V(Node(), 0, 0, cow()) :: Vector'
+  | 'Vector[$(a :: Term)]': '_V(Node(), 1, 0, cow($a)) :: Vector'
+  | 'Vector[$a, $b]': '_V(Node(), 2, 0, cow($a, $b)) :: Vector'
+  | 'Vector[$a, $b, $c]': '_V(Node(), 3, 0, cow($a, $b, $c)) :: Vector'
+  | 'Vector[$a, $b, $c, $d, ...]': 'Vector[$a, $b, $c].add_all(List($d, ...)) :: Vector'
+  | 'Vector()': '_V(Node(), 0, 0, cow()) :: Vector'
+  | 'Vector($root, $size, $height, $tail)': ' _V($root, $size, $height, $tail) :: Vector'
 */
   
-  private override equals(rhs :~ Vector, recur):
+  private override equals(rhs :: Vector, recur):
     size == rhs.size
       && recur(tail, rhs.tail)
       && recur(root, rhs.root)
@@ -151,22 +155,22 @@ class Vector(root :: Node = Node(),
   private override hash_code(recur):
     Equatable.hash_code_combine(recur(root),
                                 for values(hc = 0):
-                                  each i: 0 .. (tail :~ Array).length()
+                                  each i: 0 .. (tail :: Array).length()
                                   Equatable.hash_code_combine(hc, tail[i]))
 
   // slow (linear)
-  private override append(rhs :~ Vector) :~ Vector:
+  private override append(rhs :: Vector) :: Vector:
     cond
     | size == 0: rhs
     | rhs.size == 0: this
     | ~else:
-        recur f(i = 0, v :~ Vector = this, arr :~ Cow = array_for(0)):
+        recur f(i = 0, v :: Vector = this, arr :: Cow = array_for(0)):
           cond
           | i >= rhs.size:
               v
           | i >= rhs.size - rhs.tail_offset():
-              for values(v = v :~ Vector):
-                each a: (rhs.tail :~ Array)
+              for values(v = v :: Vector):
+                each a: (rhs.tail :: Array)
                 v.add(a)
           | i mod MAX_WIDTH == 0:
               let new_arr = array_for(i)
@@ -175,7 +179,7 @@ class Vector(root :: Node = Node(),
               f(i + 1, v.add(arr[radix(i, 0)]), arr)
 
         
-  method add(el) :~ Vector:
+  method add(el) :: Vector:
     // is there room in current root without overflow to a new level?
     def overflow = (size bits.(>>) BITS) > (1 bits.(<<) shift)
     
@@ -188,25 +192,25 @@ class Vector(root :: Node = Node(),
         Vector(Node(cow(root, new_branch(shift, tail))), size + 1, shift + BITS, cow(el))
     | ~else: Vector(push_tail(shift, root, tail), size + 1, shift, cow(el))
 
-  method add_all(seq :: Sequence) :~ Vector:
+  method add_all(seq :: Sequence) :: Vector:
     for values(v = this):
       each val: seq
       v.add(val)
  
 
-  override get(idx :: Int) :~ Vector:
+  override get(idx :: Int) :: Vector:
     array_for(idx)[idx bits.and MASK]
 
-  method set(idx :: Int, el) :~ Vector:
+  method set(idx :: Int, el) :: Vector:
     cond
     | idx < size && idx >= tail_offset():
-        def new_tail = (tail :~ Array).copy()
+        def new_tail = (tail :: Array).copy()
         new_tail[idx bits.and MASK] := el
         Vector(root, size, shift, cow_from(new_tail))
         
     | idx < size && idx >= 0:
         def new_root:
-          recur set(level = shift, node :~ Node = root) :: Node:
+          recur set(level = shift, node :: Node = root) :: Node:
             def data = node.data.copy()
             if level == 0
             | data[idx bits.and MASK] := el
@@ -219,7 +223,7 @@ class Vector(root :: Node = Node(),
     | ~else: error(#'Vec, "index out of bounds")
         
 
-  method take(pos :: Int) :~ Vector:
+  method take(pos :: Int) :: Vector:
     cond
     | pos < 0 || pos > size:
         error(#'Vector_take, "index out of range")
@@ -230,10 +234,10 @@ class Vector(root :: Node = Node(),
     | pos > tail_offset():
         Vector(root, pos, shift, cow_take(tail, pos - tail_offset()))
     | ~else:
-        let (root :~ Node, tail :~ Cow):
-          recur take(node :~ Node = root, level = shift):
+        let (root :: Node, tail :: Cow):
+          recur take(node :: Node = root, level = shift):
             def subidx = radix(pos - 1, level)
-            def new_children :~ Array = vector.take(node.data, subidx + 1)
+            def new_children :: Array = vector.take(node.data, subidx + 1)
             cond
             | level == 0: 
                 // if we're here, then the initial v was shift == 0
@@ -241,13 +245,13 @@ class Vector(root :: Node = Node(),
             | level == BITS:
                 values(Node(cow_take(node.data,
                                      radix(pos - 1, BITS))),
-                       cow_take((node.data[radix(pos - 1, BITS)] :~ Node).data, radix(pos - 1, 0) + 1))
+                       cow_take((node.data[radix(pos - 1, BITS)] :: Node).data, radix(pos - 1, 0) + 1))
             | ~else: let (r, t) = take(node.data[subidx], level - BITS)
                      new_children[subidx] := r
                      values(Node(new_children), t)
                      
 // TODO detect need to squash efficiently and avoid it
-        recur squash(node :~ Node = root, new_shift = shift):
+        recur squash(node :: Node = root, new_shift = shift):
           cond
           | !node || node.data.length() == 0 || !node.data[0]:
               if !tail || Array.length(tail) == 0 || !tail[0]
@@ -260,7 +264,7 @@ class Vector(root :: Node = Node(),
               
 
   // inefficient because the not-dumb method breaks the leftwise-dense invariant
-  method drop(pos :: Int) :~ Vector:
+  method drop(pos :: Int) :: Vector:
     cond
     | pos < 0 || pos > size:
         error(#'Vector_drop, "index out of range")
@@ -274,7 +278,7 @@ class Vector(root :: Node = Node(),
         
          
 
-  method pop() :~ Vector:
+  method pop() :: Vector:
     cond
     | size == 0:
         error(#'Vec, "cannot pop an empty vector")
@@ -359,15 +363,15 @@ class Vector(root :: Node = Node(),
     | ((size - 1) bits.(>>) BITS) bits.(<<) BITS
 
 // todo private
-  //private method array_for(idx) :~ Vec:
-  method array_for(idx) :~ Cow:
+  //private method array_for(idx) :: Vec:
+  method array_for(idx) :: Cow:
     cond
     | idx < 0 || idx >= size:
         error(#'Vector, "index out of bounds")
     | idx >= this.tail_offset():
         tail
     | ~else:
-        recur step(node :~ Node = root, i = shift):
+        recur step(node :: Node = root, i = shift):
           if i == 0
           | node.data
           | step(node.data[(idx bits.(>>) i) bits.and MASK], i - BITS)
@@ -378,23 +382,23 @@ class Vector(root :: Node = Node(),
 
 
 
-fun from(seq :: Sequence) :~ Vector:
-  for values(v  = EMPTY :~ Vector):
+fun from(seq :: Sequence) :: Vector:
+  for values(v  = EMPTY :: Vector):
     each el: seq
     v.add(el)
     
-fun new_branch(level :~ Int, data :~ Array) :: Node:
+fun new_branch(level :: Int, data :: Array) :: Node:
   //if level == 0
   if level <= 0
   | Node(data)
   | Node(Array(new_branch(level - BITS, data)))
 
 // TODO smarter way to do this?
-fun calc_shift(v :~ Vector):
-    calc_height(v :~ Vector) * BITS
-fun calc_height(v :~ Vector):
+fun calc_shift(v :: Vector):
+    calc_height(v :: Vector) * BITS
+fun calc_height(v :: Vector):
     bits.length(math.max(0, v.size - v.tail.length() - MAX_WIDTH)) div BITS
-def EMPTY :~ Vector = Vector()
+def EMPTY :: Vector = Vector()
 
 module test:
   check: EMPTY.add(1).to_list()
