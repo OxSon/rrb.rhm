@@ -20,11 +20,50 @@ import lib("racket/vector.rkt") as vector:
     #{vector-map} as map
 
 
-annot.macro 'Cow':
-  let '$(cow :: annot_meta.Parsed)' = 'Array'
+annot.macro
+| 'Cow':
+    let '$(cow :: annot_meta.Parsed)' = 'Array'
+    let (pred, sis) = annot_meta.unpack_predicate(cow)
+    annot_meta.pack_predicate('r.#{vector?} && frozen',
+                              sis)
+#//
+| 'Cow.of($t)':
+    let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
+    let (pred, sis) = annot_meta.unpack_predicate(cow)
+    annot_meta.pack_predicate('$pred && frozen', sis)
+
+#//
+annot.macro 'Cow.of($t)':
+  let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
   let (pred, sis) = annot_meta.unpack_predicate(cow)
-  annot_meta.pack_predicate('r.#{vector?} && frozen',
-                            sis)
+  annot_meta.pack_predicate('$pred && frozen', sis)
+  
+  
+namespace Cow:
+  fun from(s :: Sequence) :: Cow:
+    for values(v = cow()):
+      each el: s
+      cow_add(v, el)
+
+  fun from_list(l :: List) :: Cow:
+    unsafe.freeze(r.#{list->vector}(l))
+
+  annot.macro 'of($t)':
+    let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
+    let (pred, sis) = annot_meta.unpack_predicate(cow)
+    annot_meta.pack_predicate('$pred && frozen', sis)
+
+  export:
+    from
+    from_list
+    of
+
+module test:
+  check: Cow.from(1..6) :: Cow
+         ~is cow(1, 2, 3, 4, 5)
+
+  check: Cow.from_list([1, 2, 3]) :: Cow.of(Int)
+         ~is cow(1, 2, 3)
 
 macro 'cow($el, ...)':
   '(r.cow($el, ...) :~ Cow)'
