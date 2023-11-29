@@ -26,17 +26,6 @@ annot.macro
     let (pred, sis) = annot_meta.unpack_predicate(cow)
     annot_meta.pack_predicate('r.#{vector?} && frozen',
                               sis)
-#//
-| 'Cow.of($t)':
-    let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
-    let (pred, sis) = annot_meta.unpack_predicate(cow)
-    annot_meta.pack_predicate('$pred && frozen', sis)
-
-#//
-annot.macro 'Cow.of($t)':
-  let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
-  let (pred, sis) = annot_meta.unpack_predicate(cow)
-  annot_meta.pack_predicate('$pred && frozen', sis)
   
   
 namespace Cow:
