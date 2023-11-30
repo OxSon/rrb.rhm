@@ -1,5 +1,17 @@
 #lang rhombus/static/and_meta
 
+import rhombus:
+  rename:
+    :: as :::
+    
+  expose :::
+  
+// comment out during dev process for extra checks
+#//
+import:
+  rhombus.(:~) as ::
+
+
 /* Array utilities for imitating COW immutable indexed sequences */
 export all_defined
 
@@ -37,17 +49,20 @@ namespace Cow:
   fun
   | from() :: Cow:
       r.cow()
-  | from(a :: Array) :: Cow:
+  | from(a ::: Array) :: Cow:
       unsafe.freeze(a.copy())
-  | from(l :: List) :: Cow:
+  | from(l ::: List) :: Cow:
       unsafe.freeze(r.#{list->vector}(l))
-  | from(s :: Sequence) :: Cow:
+  | from(s ::: Sequence) :: Cow:
       unsafe.freeze(for Array (si: s): si)
+  | from(_) :: Cow:
+      error(#'Cow_from, "unknown argument")
 
+  
   annot.macro 'of($t)':
     let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
     let (pred, sis) = annot_meta.unpack_predicate(cow)
-    annot_meta.pack_predicate('$pred && frozen', sis)
+    annot_meta.pack_predicate('fun (node): ($pred)(node) && frozen(node)', sis)
 
   
   def EMPTY :: Cow = EMPTY_COW
@@ -141,13 +156,13 @@ namespace unsafe:
   export freeze
 
 module test:
-  check: Array(1, 2, 3) :: Cow
+  check: Array(1, 2, 3) ::: Cow
          ~raises ""
          
-  check: 3 :: Cow
+  check: 3 ::: Cow
          ~raises ""
          
-  check: cow(1, 2, 3) :: Cow
+  check: cow(1, 2, 3) ::: Cow
          ~completes
 
   check: cow_add(cow(1, 2, 3), 4)
@@ -156,7 +171,7 @@ module test:
   check: cow_set(cow(1, 2, 3), 1, -1)
          ~is_now cow(1, -1, 3)
 
-  check: (cow(1, 2, 3) :: Cow)[0] := -1
+  check: cow(1, 2, 3)[0] := -1
          ~raises ""
 
   check: unsafe.freeze(Array(1, 2, 3))
@@ -275,4 +290,6 @@ module test:
 
   check: cow_map(fun (x): x + 1, cow(1, 2, 3))
          ~is cow(2, 3, 4)
-         
+
+  check: Cow.from(#false)
+         ~raises ""
