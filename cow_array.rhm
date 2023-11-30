@@ -18,7 +18,7 @@ export:
   frozen
   is_vector
 
-import lib("racket/base.rkt") as r:
+import lib("racket/base.rkt") as r_cow:
   rename:
     #{vector-immutable} as cow // for persistent vector
     #{immutable?} as frozen
@@ -46,18 +46,18 @@ annot.macro
                               sis)
 
 macro 'cow($el, ...)':
-  '(r.cow($el, ...) :: Cow)'
+  '(r_cow.cow($el, ...) :: Cow)'
 
 def EMPTY_COW :: Cow = cow()
   
 namespace Cow: 
   fun
   | from() :: Cow:
-      r.cow()
+      r_cow.cow()
   | from(a ::: Array) :: Cow:
       unsafe.freeze(a.copy())
   | from(l ::: List) :: Cow:
-      unsafe.freeze(r.#{list->vector}(l))
+      unsafe.freeze(r_cow.#{list->vector}(l))
   | from(s ::: Sequence) :: Cow:
       unsafe.freeze(for Array (si: s): si)
   | from(_) :: Cow:
@@ -90,7 +90,8 @@ module test:
 
 
 fun cow_lst(arr :: Array) :: List:
-  r.#{vector->list}(arr)
+  import lib("racket/base.rkt") as r
+  r_cow.#{vector->list}(arr)
   
 fun cow_map(f :: Function.of_arity(1), arr :: Array) :: Cow:
   unsafe.freeze(vector.map(f, arr))

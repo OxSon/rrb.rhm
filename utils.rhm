@@ -1,5 +1,38 @@
 #lang rhombus/static/and_meta
 
+import lib("racket/base.rkt") as r
+/*Port.current_output()
+(open-output-file path	 
+               [#:mode mode-flag	 
+     	 	#:exists exists-flag	 
+     	 	#:permissions permissions]	 
+     	 	#:replace-permissions? replace-permissions?)	 
+
+ → output-port?Port.current_output()
+  path : path-string?
+  mode-flag : (or/c 'binary 'text) = 'binary
+  	exists-flag	 	:	 	
+(or/c 'error 'append 'update 'can-update
+      'replace 'truncate
+      'must-truncate 'truncate/replace)
+ 	 	 	=	 	'error
+  permissions : (integer-in 0 65535) = #o666
+  replace-permissions? : #f*/
+fun open_file(path :: String) :: Port.Output:
+  r.#{open-output-file}(path, ~exists: #'replace)
+
+def LOG_PATH = r.#{current-seconds}() +& ".log"
+
+macro 'log($path, $a, ...)':
+  'block:
+     let o = r.#{open-output-file}($path, ~exists: #'append)
+     r.write($a, ..., o)
+     r.#{close-output-port}(o)'
+
+module test:
+  check: open_file("foo.txt")
+         ~completes
+
 export all_defined
 
 fun filter(f, l):
