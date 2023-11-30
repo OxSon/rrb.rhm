@@ -81,11 +81,7 @@ class Node(children :: Cow.of(Node || Any) = cow(), sizes :: maybe(Cow.of(Int)) 
 macro 'leaf($args)':
   'Node(cow($args))'
 
-// TODO
-def dummy_node = leaf("todo")
-
 macro 'EMPTY_VEC': 'Catvec[]'
-
                     
 class Catvec(root :: Node,
              size :: NonnegInt,
@@ -98,7 +94,6 @@ class Catvec(root :: Node,
   internal _CatVec
 
   expression
-  // TODO smaller (shift <= 5?) Catvecs are just Vecs until cloned/catted/operated on?
   | 'Catvec[]': '_CatVec(Node(), 0, 0) :: Catvec'
   | 'Catvec[$(a :: Term)]': '_CatVec(Node(cow($a)), 1, 0) :: Catvec'
   | 'Catvec[$a, $b]': '_CatVec(Node(cow($a, $b)), 2, 0) :: Catvec'
@@ -152,8 +147,7 @@ class Catvec(root :: Node,
   method add(el) :: Catvec:
     if size == 0
     | Catvec(leaf(el), 1, 0)
-    |
-      def count = copyable_count(root, height)
+    | def count = copyable_count(root, height)
       if count == 0
       | /* not enough space in original tree */
         Catvec(Node(cow(root, new_branch(el, height)),
@@ -280,6 +274,16 @@ class Catvec(root :: Node,
     | at == size: values(this, Catvec[])
     | at > 0 && at < size: values(take(at), drop(at))
     | ~else: error(#'split, "invalid index")
+
+  method insert(at :: NonnegInt, el) :: Catvec:
+    cond
+    | at <= 0:
+        Catvec[].add(el).concat(this)
+    | at >= size - 1:
+        this.add(el)
+    | ~else:
+        let (l :: Catvec, r :: Catvec) = split(at)
+        l.add(el).concat(r)
     
 
   private override method append(rhs :: Catvec) :: Catvec:
@@ -298,26 +302,8 @@ class Catvec(root :: Node,
                          #true),
           size + rhs.size)
 
-  method insert(at :: NonnegInt, el) :: Catvec:
-    cond
-    | at <= 0:
-        Catvec[].add(el).concat(this)
-    | at >= size - 1:
-        this.add(el)
-    | ~else:
-        let (l :: Catvec, r :: Catvec) = split(at)
-        l.add(el).concat(r)
-
-
-
 
 /* helper functions */
-
-fun
-| from() :: Catvec: Catvec[]
-| from(s :: Sequence) :: Catvec:
-    for values(v = Catvec[]) (el: s):
-      v.add(el)
 
 fun concat_subtree(left :: Node,
                    height_l :: Int,
@@ -519,7 +505,7 @@ fun size_subtree(node :: Node, height :: Int):
       (node.sizes :: Cow)[node.size - 1]
   | ~else:
       for values(sum = 0):
-        each i: node.children
+        each i: 0..node.children.length()
         sum + size_subtree(node.children[i], height - 1)
       #//
       // if sizes is #false, then we know we have a leftwise-dense subtree TODO: do we though?
@@ -595,6 +581,13 @@ fun new_branch(el, height):
   if height == 0
   | leaf(el)
   | Node(cow(new_branch(el, height - 1)))
+    
+
+fun
+| from() :: Catvec: Catvec[]
+| from(s :: Sequence) :: Catvec:
+    for values(v = Catvec[]) (el: s):
+      v.add(el)
                    
 module test:
   /* Node tests */ 
