@@ -7,13 +7,16 @@ import rhombus:
   expose :::
   
 // comment out during dev process for extra checks
-#//
+
 import:
   rhombus.(:~) as ::
 
 
 /* Array utilities for imitating COW immutable indexed sequences */
-export all_defined
+export:
+  all_defined
+  frozen
+  is_vector
 
 import lib("racket/base.rkt") as r:
   rename:
@@ -21,7 +24,9 @@ import lib("racket/base.rkt") as r:
     #{immutable?} as frozen
     #{vector?} as is_vector
 
-  expose: frozen is_vector
+  expose:
+    frozen
+    is_vector
   
 import lib("racket/vector.rkt") as vector:
   rename:
@@ -128,7 +133,7 @@ fun cow_split(arr :: Array, pos) :~ values(Cow, Cow):
 
 fun cow_take(arr :: Array, pos) :: Cow:
   cond
-  | pos < 0 || pos > arr.length(): error(#'cow_take, "index out of range")
+  | pos < 0 || pos > arr.length(): error(#'cow_take, "index out of range: " +& pos +& ", " +& arr)
   | pos == 0: Cow.EMPTY
   | pos == arr.length(): arr
   | ~else: unsafe.freeze(vector.take(arr, pos))
