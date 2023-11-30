@@ -8,15 +8,14 @@ import rhombus:
     :: as :::
     
   expose :::
-  
-export:
-  Catvec
-
 
 import:
   rhombus.(:~) as :: // comment out during dev process for extra checks
   
-
+  
+export:
+  Catvec
+  
 def BITS = 5
 def MAX_WIDTH = 32
 def MASK = 31
