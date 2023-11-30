@@ -1,4 +1,4 @@
-#lang rhombus/static
+#lang rhombus/static/and_meta
 
 import "utils.rhm" open
 import "cow_array.rhm" open
@@ -113,7 +113,36 @@ class Catvec(root :: Node,
   implements Indexable
   private implements Equatable
   private implements Appendable
+  private implements Sequenceable
 
+
+  // todo cache leaf nodes?
+  private override to_sequence():
+    Sequence.make(~initial_position: 0,
+                  ~continue_at_position: fun (i): i < size,
+                  ~position_to_element: fun (i): get(i),
+                  ~position_to_next: fun (i): i + 1)
+/*
+    cant get this to work , keep getting this error
+```
+../../Library/Racket/8.11/pkgs/rhombus-prototype/rhombus/private/static-info.rkt:60:28:
+    quasisyntax: misuse within quasisyntax in:
+    (unsyntax-splicing (syntax-local-value (quote-syntax Catvec-statinfo)))
+```
+    
+  // todo cache leaf nodes?
+  sequence '$lhs: $rhs':
+    '(~outer_binds:
+        p = $rhs,
+      ~recur_binds:
+        pos = 0,
+      ~head_guard:
+        pos < size,
+      ~inner_binds:
+        $lhs = (p :~ Catvec)[pos],
+      ~recur_args:
+        (pos + 1))'
+*/
   
   internal _CatVec
 
@@ -125,6 +154,8 @@ class Catvec(root :: Node,
   | 'Catvec[$a, $b, $c, $d, ...]': 'Catvec[$a, $b, $c].add_all(List($d, ...)) :: Catvec'
   | 'Catvec()': '_CatVec(Node(), 0, 0, cow()) :: Catvec'
   | 'Catvec($root, $size, $height)': '_CatVec($root, $size, $height) :: Catvec'
+
+  
 
   macro 'EMPTY': 'Catvec[]'
   export:
@@ -321,7 +352,9 @@ class Catvec(root :: Node,
 
   method cons(el) :: Catvec:
     insert(0, el)
-    
+
+  method pop() :: Catvec:
+    take(size - 1)
 
   private override method append(rhs :: Catvec) :: Catvec:
     concat(rhs)
@@ -338,6 +371,15 @@ class Catvec(root :: Node,
                          rhs.height,
                          #true),
           size + rhs.size)
+
+  method sublist(start :: Int, end :: Int) :: Catvec:
+    cond
+    | start < 0 || end > size:
+        error(#'Catvec_sublist, "index out of range")
+    | start == 0 && end == size:
+        this
+    | ~else:
+        drop(start).take(end - start)
 
 
 /* helper functions */
