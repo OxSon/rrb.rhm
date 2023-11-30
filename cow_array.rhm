@@ -7,8 +7,9 @@ import lib("racket/base.rkt") as r:
   rename:
     #{vector-immutable} as cow // for persistent vector
     #{immutable?} as frozen
+    #{vector?} as is_vector
 
-  expose frozen
+  expose: frozen is_vector
   
 import lib("racket/vector.rkt") as vector:
   rename:
@@ -24,123 +25,117 @@ annot.macro
 | 'Cow':
     let '$(cow :: annot_meta.Parsed)' = 'Array'
     let (pred, sis) = annot_meta.unpack_predicate(cow)
-    annot_meta.pack_predicate('r.#{vector?} && frozen',
+    annot_meta.pack_predicate('is_vector && frozen',
                               sis)
-  
-  
-namespace Cow:
-  fun from(s :: Sequence) :: Cow:
-    for values(v = cow()):
-      each el: s
-      cow_add(v, el)
 
-  fun from_list(l :: List) :: Cow:
-    unsafe.freeze(r.#{list->vector}(l))
+macro 'cow($el, ...)':
+  '(r.cow($el, ...) :: Cow)'
+
+def EMPTY_COW :: Cow = cow()
+  
+namespace Cow: 
+  fun
+  | from() :: Cow:
+      r.cow()
+  | from(a :: Array) :: Cow:
+      unsafe.freeze(a.copy())
+  | from(l :: List) :: Cow:
+      unsafe.freeze(r.#{list->vector}(l))
+  | from(s :: Sequence) :: Cow:
+      unsafe.freeze(for Array (si: s): si)
 
   annot.macro 'of($t)':
     let '$(cow :: annot_meta.Parsed)' = 'Array.of($t)'
     let (pred, sis) = annot_meta.unpack_predicate(cow)
     annot_meta.pack_predicate('$pred && frozen', sis)
 
+  
+  def EMPTY :: Cow = EMPTY_COW
+
   export:
     from
-    from_list
     of
+    EMPTY
 
 module test:
   check: Cow.from(1..6) :: Cow
          ~is cow(1, 2, 3, 4, 5)
 
-  check: Cow.from_list([1, 2, 3]) :: Cow.of(Int)
+  check: Cow.from([1, 2, 3]) :: Cow.of(Int)
          ~is cow(1, 2, 3)
 
-macro 'cow($el, ...)':
-  '(r.cow($el, ...) :~ Cow)'
+  check: Cow.from(Array(1, 2, 3)) :: Cow.of(Int)
+         ~is cow(1, 2, 3)
 
-def EMPTY :~ Cow = cow()
 
-fun cow_lst(arr :~ Array) :~ List:
+
+fun cow_lst(arr :: Array) :: List:
   r.#{vector->list}(arr)
-
-module test:
-  check: cow_lst(Array())
-         ~is []
-  check: cow_lst(Array(1, 2, 3, 4))
-         ~is [1, 2, 3, 4]
-
-fun cow_map(f :~ Function.of_arity(1), arr :~ Array) :~ Cow:
+  
+fun cow_map(f :: Function.of_arity(1), arr :: Array) :: Cow:
   unsafe.freeze(vector.map(f, arr))
   
-fun cow_set(arr :~ Array, idx, el) :~ Cow:
+fun cow_set(arr :: Array, idx, el) :: Cow:
   let ret = Array.copy(arr)
   ret[idx] := el
   unsafe.freeze(ret)
     
-fun cow_add(arr :~ Array, el) :~ Cow:
+fun cow_add(arr :: Array, el) :: Cow:
   let ret = Array.make(arr.length() + 1)
   Array.copy_from(ret, 0, arr)
   ret[arr.length()] := el
   unsafe.freeze(ret)
     
-fun cow_drop(arr :~ Array, pos) :~ Cow:
+fun cow_drop(arr :: Array, pos) :: Cow:
    cond
    | pos < 0 || pos > arr.length(): error(#'cow_drop, "index out of range")
    | pos == 0: arr
-   | pos == arr.length(): EMPTY
+   | pos == arr.length(): Cow.EMPTY
    | ~else: unsafe.freeze(vector.drop(arr, pos))
 
-fun cow_drop_right(arr :~ Array, pos) :~ Cow:
+fun cow_drop_right(arr :: Array, pos) :: Cow:
   cond
   | pos < 0 || pos > arr.length(): error(#'cow_drop_right, "index out of range")
-  | pos == 0: EMPTY
+  | pos == 0: Cow.EMPTY
   | pos == arr.length(): arr
   | ~else: unsafe.freeze(vector.drop_right(arr, pos))
 
-fun cow_split(arr :~ Array, pos) :~ values(Cow, Cow):
+fun cow_split(arr :: Array, pos) :~ values(Cow, Cow):
   cond
   | pos == 0:
-      values(EMPTY, arr)
+      values(Cow.EMPTY, arr)
   | pos == arr.length():
-      values(arr, EMPTY)
+      values(arr, Cow.EMPTY)
   | pos > 0 && pos < arr.length():
       values(vector.take(arr, pos),
              vector.drop(arr, pos))
   | ~else: error(#'cow_split, "index out of range")
 
-fun cow_take(arr :~ Array, pos) :~ Cow:
+fun cow_take(arr :: Array, pos) :: Cow:
   cond
   | pos < 0 || pos > arr.length(): error(#'cow_take, "index out of range")
-  | pos == 0: EMPTY
+  | pos == 0: Cow.EMPTY
   | pos == arr.length(): arr
   | ~else: unsafe.freeze(vector.take(arr, pos))
 
 fun
-| cow_append(l :~ Array, r :~ Array) :~ Cow:
+| cow_append(l :: Array, r :: Array) :: Cow:
     unsafe.freeze(l ++ r)
-| cow_append(l :~ Array, c :~ Array, r :~ Array) :~ Cow:
+| cow_append(l :: Array, c :: Array, r :: Array) :: Cow:
     unsafe.freeze(l ++ c ++ r)
 
-fun cow_copy(arr :~ Array) :~ Cow:
+fun cow_copy(arr :: Array) :: Cow:
   unsafe.freeze(arr.copy())
 
-fun cow_copy_mut(arr :~ Array) :~ Array:
+fun cow_copy_mut(arr :: Array) :: Array:
   arr.copy()
 
 
-fun
-| cow_from() :~ Cow:
-    r.cow()
-| cow_from(a :: Array) :~ Cow:
-    unsafe.freeze(a.copy())
-| cow_from(s :: Sequence) :~ Cow:
-    unsafe.freeze(
-      for Array (si: s):
-        si)
   
 namespace unsafe: 
   import lib("racket/unsafe/ops.rkt") as unsafe
 
-  fun freeze(v :~ Array) :~ Cow:
+  fun freeze(v :: Array) :: Cow:
     unsafe.#{unsafe-vector*->immutable-vector!}(v)
       
   export freeze
@@ -173,6 +168,11 @@ module test:
 
   check: cow(1, 2, 3) ++ cow(4, 5)
          ~is_now cow(1, 2, 3, 4, 5)
+
+  check: cow_lst(Array())
+         ~is []
+  check: cow_lst(Array(1, 2, 3, 4))
+         ~is [1, 2, 3, 4]
 
   check: cow(#'a, #'b, #'c)
            ++ cow(1, 2, 3)
@@ -214,7 +214,7 @@ module test:
 
   let size = 100
   let pos = 13
-  let p = cow_from(0..size)
+  let p = Cow.from(0..size)
   let p_drop = cow_drop(p, pos)
   let p_drop_right = cow_drop_right(p, pos)
   let p_take = cow_take(p, pos)
@@ -240,14 +240,14 @@ module test:
   let (l1, r1) = cow_split(p, 0)
   let (l2, r2) = cow_split(p, p.length())
 
-  check: l1 ~is EMPTY
-         r2 ~is EMPTY
+  check: l1 ~is Cow.EMPTY
+         r2 ~is Cow.EMPTY
 
   check: r1 ~is p
          l2 ~is p
 
   check: cow_drop_right(p, 0)
-         ~is EMPTY
+         ~is Cow.EMPTY
 
   check: cow_split(p, 1000000000)
          ~raises ""
@@ -263,11 +263,11 @@ module test:
   check: cow_copy_mut(p) ~is_now Array(1, 2, 3)
          cow_copy_mut(p) == p ~is #false
          
-  check: cow_from()
-         ~is EMPTY
+  check: Cow.from()
+         ~is Cow.EMPTY
 
   let a = Array(1, 2, 3)
-  let c = cow_from(a)
+  let c = Cow.from(a)
 
   check: c ~is_now a
   check: c == a ~is #false
