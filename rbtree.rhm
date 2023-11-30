@@ -1,14 +1,14 @@
 #lang rhombus/static/and_meta
 
 import "utils.rhm" open
-import "cow_array.rhm" open:
-  rename: EMPTY as EMPTY_COW
+import "cow_array.rhm" open
 
 export:
   Vector
   EMPTY
 
 // comment out during dev process for extra checks
+#//
 import:
   rhombus.(:~) as ::
 
@@ -34,20 +34,39 @@ module test:
 class Node(data :: Cow):
   private implements Printable
   private implements Sequenceable
+  private implements Indexable
+  
   sequence '$lhs: $rhs':
     '(~outer_binds:
-        p = $rhs,
+        p = ($rhs :: Node).data,
       ~recur_binds:
         pos = 0,
       ~head_guard:
-        pos < 2,
+        pos < 32 && (p :~ Cow)[pos],
       ~inner_binds:
-        $lhs = if pos == 0 | Posn.y(p) | Posn.x(p),
+        $lhs = (p :~ Cow)[pos],
       ~recur_args:
         (pos + 1))'
 
+  
+  annot.macro 'of($T)':
+    let '$(node :: annot_meta.Parsed)' = 'Node'
+    let (_, sis) = annot_meta.unpack_predicate(node)
+    let '$(t :: annot_meta.Parsed)' = '$T'
+    let (pred, _) = annot_meta.unpack_predicate(t)
+    
+    annot_meta.pack_predicate('fun (node): node is_a Node
+                                             && node.data.length() == 0
+                                             || $(pred)((node.data :: Cow)[0])',
+                              sis)
+
+  export of
+
   private override to_sequence():
-    TODO "to sequence"
+    Sequence.make(~initial_position: 0,
+                  ~continue_at_position: fun (i): i < MAX_WIDTH - 1 && data[i],
+                  ~position_to_element: fun (i): data[i],
+                  ~position_to_next: fun (i): i + 1)
   
   constructor
   | (): super(unsafe.freeze(Array.make(MAX_WIDTH, #false)))
@@ -55,6 +74,9 @@ class Node(data :: Cow):
       def _data = Array.make(MAX_WIDTH, #false)
       Array.copy_from(_data, 0, data)
       super(unsafe.freeze(_data))
+
+  private override get(idx):
+    data[idx]
 
   property first: data[0]
   property last:
@@ -198,7 +220,7 @@ class Vector(root :: Node = Node(),
       v.add(val)
  
 
-  override get(idx :: Int) :: Vector:
+  override get(idx :: Int):
     array_for(idx)[idx bits.and MASK]
 
   method set(idx :: Int, el) :: Vector:
@@ -206,7 +228,7 @@ class Vector(root :: Node = Node(),
     | idx < size && idx >= tail_offset():
         def new_tail = (tail :: Array).copy()
         new_tail[idx bits.and MASK] := el
-        Vector(root, size, shift, cow_from(new_tail))
+        Vector(root, size, shift, Cow.from(new_tail))
         
     | idx < size && idx >= 0:
         def new_root:
@@ -287,7 +309,7 @@ class Vector(root :: Node = Node(),
     | size - tail_offset() > 1:
         def new_tail = Array.make(tail.length() - 1)
         Array.copy_from(new_tail, 0, tail, 0, new_tail.length())
-        Vector(root, size - 1, shift, cow_from(new_tail))
+        Vector(root, size - 1, shift, Cow.from(new_tail))
     | ~else:
         def new_tail = array_for(size - 2) // TODO what??
         def new_root :: Node = pop_tail(shift, root) || Node()
