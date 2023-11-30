@@ -1,17 +1,37 @@
 #lang rhombus/static
 
 import "utils.rhm" open
+import "cow_array.rhm" open
 
 export:
-  Vec
+  Catvec
 
-def SHIFT_INC = 5
+
+import:
+  rhombus.(:~) as :: // comment out during dev process for extra checks
+  
+
+def BITS = 5
 def MAX_WIDTH = 32
-def SHIFT_MASK = 31
+def MASK = 31
 def MAX_ERROR = 2
 
+      
+macro 'radix($index, $height)':
+  '((($index) bits.(>>) (BITS * $height)) bits.and MASK)'
 
-/* a node in the RRB Tree
+module test:
+  for (i: 0 .. 32):
+    check: radix(i, 0)
+           ~is i
+    check: radix(i, 1)
+           ~is 0
+  for (i: 32 .. 64):
+    check: radix(i, 1)
+           ~is 1
+           
+class Node(children :: Cow.of(Node || Any) = cow(), sizes :: maybe(Cow.of(Int)) = #false):
+ /* a node in the RRB Tree
 
   - a node is fully dense if it has exactly `m` children where `m` is the branching factor of the overall Tree
     and each child is also fully dense
@@ -20,9 +40,9 @@ def MAX_ERROR = 2
   - a node is balanced if it is leftwise dense or fully dense (note that leaves are always at least leftwise dense)
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
-class Node(children :~ Array.of(Node || Any) = vec(), sizes :~ Array.of(Int/*:~ maybe(Array.of(Int)*/) = #false):
   private implements Equatable
- 
+  implements Indexable
+
   property balanced:
     !sizes
     
@@ -36,7 +56,7 @@ class Node(children :~ Array.of(Node || Any) = vec(), sizes :~ Array.of(Int/*:~ 
     children[children.length() - 1]
 
 
-  private override equals(rhs :~ Node, recur):
+  private override equals(rhs :: Node, recur):
     children.length() == rhs.children.length()
       && (for values(eq = #true):
             each i: 0 .. children.length()
@@ -50,27 +70,26 @@ class Node(children :~ Array.of(Node || Any) = vec(), sizes :~ Array.of(Int/*:~ 
         each i: 1 .. children.length()
         Equatable.hash_code_combine(hc, recur(children[i]))
     
-  method get(index):
+  override get(index):
     children[index]
 
-  method set(index, el) :~ Node:
-    Node(set_vec(children, index, el), sizes)
+  method set(index, el) :: Node:
+    Node(cow_set(children, index, el), sizes)
 
 
 
 macro 'leaf($args)':
-  'Node(vec($args))'
+  'Node(cow($args))'
 
 // TODO
 def dummy_node = leaf("todo")
 
-macro 'EMPTY_VEC': 'CVec[]'
+macro 'EMPTY_VEC': 'Catvec[]'
 
                     
-class CVec(root :~ Node,
-           size :~ NonnegInt,
-           height :~ NonnegInt,
-           tail :: Array):
+class Catvec(root :: Node,
+             size :: NonnegInt,
+             height :: NonnegInt):
   implements Indexable
   private implements Equatable
   private implements Appendable
@@ -78,245 +97,195 @@ class CVec(root :~ Node,
   
   internal _CatVec
 
-  //what about making rrbtree the default but having it return
-  // a list for smaller values? perhaps up to dozens?
-  // would need to unify their apis, though
-
-// NOTE: I want to go look at the source of List.iota.
-  // this should be easy to do from the docs
   expression
-  // TODO smaller (shift <= 5?) CVecs are just Vecs until cloned/catted/operated on?
-  | 'CVec[]': '_CatVec(Node(), 0, 0, vec()) :~ CVec'
-  | 'CVec[$(a :: Term)]': '_CatVec(Node(), 1, 0, vec($a))'
-  | 'CVec[$a, $b]': '_CatVec(Node(), 2, 0, vec($a, $b))'
-  | 'CVec[$a, $b, $c]': '_CatVec(Node(), 3, 0, vec($a, $b, $c)) :~ CVec'
-  | 'CVec[$a, $b, $c, $d, ...]': 'CVec[$a, $b, $c].add_all(List($d, ...)) :~ CVec'
-  | 'CVec()': '_CatVec(Node(), 0, 0, vec()) :~ CVec'
-  | 'CVec(~from: $lst)': '_CatVec(Node(), 0, 0, vec()).add_all($lst)'
-  | 'CVec($root, $size, $height, $tail)': '_CatVec($root, $size, $height, $tail) :~ CVec'
+  // TODO smaller (shift <= 5?) Catvecs are just Vecs until cloned/catted/operated on?
+  | 'Catvec[]': '_CatVec(Node(), 0, 0) :: Catvec'
+  | 'Catvec[$(a :: Term)]': '_CatVec(Node(cow($a)), 1, 0) :: Catvec'
+  | 'Catvec[$a, $b]': '_CatVec(Node(cow($a, $b)), 2, 0) :: Catvec'
+  | 'Catvec[$a, $b, $c]': '_CatVec(Node(cow($a, $b, $c)), 3, 0) :: Catvec'
+  | 'Catvec[$a, $b, $c, $d, ...]': 'Catvec[$a, $b, $c].add_all(List($d, ...)) :: Catvec'
+  | 'Catvec()': '_CatVec(Node(), 0, 0, cow()) :: Catvec'
+  | 'Catvec($root, $size, $height)': '_CatVec($root, $size, $height) :: Catvec'
 
- #//
-  def from:
-    fun (& lst):
-      match lst
-      | []: CVec[]
-      | List.cons()
-
-  #//
-  reconstructor (root):
-    error("todo")
+  macro 'EMPTY': 'Catvec[]'
+  export:
+    EMPTY
+    from
   
   property balanced:
     root.balanced
 
-  private override equals(rhs :~ CVec, recur):
+  private override equals(rhs :: Catvec, recur):
     size == rhs.size && recur(root, rhs.root)
 
   private override hash_code(recur):
     recur(root)
 
-  private method tail_offset():
-    cond
-    | root.balanced && size > 32:
-        ((size - 1) bits.(>>) SHIFT_INC) bits.(<<) SHIFT_INC
-    | size > 32:
-        root.sizes[root.sizes.length() - 1]
-    | ~else: 0
-
-  // get the element at `index`
-  override get(index :~ Int):
-    if index >= tail_offset()
-    | tail[radix_of(index, 0)]
-    | recur get(node :~ Node = root, index = index, depth = height):
-        if node.balanced
-        | for values(n = node):
-            each i: 0 .. depth + 1
-            n.get(radix_of(index, depth - i))
-        | def (branch_index, subindex) = step(node, index, depth)
-          get(node.get(branch_index), subindex, depth - 1)
-
+  override get(index :: Int):
+    //let (node, subidx) = node_for(this, index)
+   // node[subidx bits.and MASK]
+    recur get(node :: Node = root, index = index, depth = height):
+      if node.balanced
+      | for values(n = node):
+          each i: List.iota(depth + 1).reverse()
+          n.get(radix(index, i))
+      | def (branch_index, subindex) = step(node, index, depth)
+        get(node.get(branch_index), subindex, depth - 1)
+      
+    
   // functionally update the slot at `index` to `el`
-  method set(index :~ Int, el):
-    if index >= tail_offset()
-    | CVec(root, size, height, set_vec(tail, index, el))
-    | def new_node = recur set(node :~ Node  = root, index = index, el = el, depth = height):
-        cond
-        | depth == 0:
-            node.set(radix_of(index, depth), el)
-        | node.balanced:
-            def branch_index = radix_of(index, depth)
-            node.set(branch_index, set(node.get(branch_index), index, el, depth - 1))
-        | ~else:
-            def (branch_index, subindex) = step(node, index, depth)
-            node.set(branch_index, set(node.get(branch_index), subindex, el, depth - 1))
+  method set(index :: Int, el) :: Catvec:
+    def new_node = recur set(node :: Node  = root, index = index, el = el, depth = height):
+      cond
+      | depth == 0:
+          node.set(radix(index, depth), el)
+      | node.balanced:
+          def branch_index = radix(index, depth)
+          node.set(branch_index, set(node.get(branch_index), index, el, depth - 1))
+      | ~else:
+          def (branch_index, subindex) = step(node, index, depth)
+          node.set(branch_index, set(node.get(branch_index), subindex, el, depth - 1))
 
-      CVec(new_node, size, height, Node(vec("todo")))
-
-  // trees that are a result of this method may not meet invariants, but rebalancing is costly
-  // and future concatenations would restore the invariants due to rebalancing being done on concats.
-  // TODO write some tests showing this
-  method take(pos :~ NonnegInt) :~ CVec:
-    cond
-    | pos <= 0:
-        CVec[]
-    | pos >= size:
-        this
-    | ~else:
-        def new_root = recur take(node :~ Node = root, index = pos - 1, depth = height):
-          cond
-          | depth == 0:
-              Node(unsafe.freeze_vec(vec_take(node.children, radix_of(index, 0) + 1)))
-          | node.balanced:
-              def branch_index = radix_of(index, depth)
-              def new_children :~ Array.of(Node) = vec_take(node.children, branch_index + 1)
-              new_children[branch_index] := take(node.get(branch_index), index, depth - 1)
-              Node(unsafe.freeze_vec(new_children))
-          | ~else:
-              def (branch_index, subindex) = step(node, index, depth)
-              def new_children :~ Array.of(Node) = vec_take(node.children, branch_index + 1)
-              def new_sizes :~ Array.of(Int)  = vec_take(node.sizes, branch_index + 1)
-              new_children[branch_index] := take(node.get(branch_index), subindex, depth - 1)
-              new_sizes[branch_index] := index + 1
-              Node(unsafe.freeze_vec(new_children),
-                   unsafe.freeze_vec(new_sizes))
-
-        recur squash(node :~ Node = new_root, new_height = height):
-          if node.size == 1 && new_height > 0
-          | squash(node.first, new_height - 1)
-          | CVec(node, pos, new_height, dummy_node)
-        
-
-  method drop(pos :~ NonnegInt) :~ CVec:
-    cond
-    | pos <= 0:
-        this
-    | pos >= size:
-        CVec[]
-    | ~else:
-        def new_root = recur drop(node :~ Node = root, index :~ Int = pos, depth :~ Int = height) :~ Node:
-          cond
-          | depth == 0:
-              Node(unsafe.freeze_vec(vec_drop(node.children, radix_of(index, 0))))
-          | node.balanced:
-              def branch_index = radix_of(index, depth)
-              def new_children :~ Array.of(Node) = vec_drop(node.children, branch_index)
-              def new_child :~ Node = drop(node.get(branch_index), index, depth - 1)
-              new_children[0] := new_child
-              
-              def size0 :~ Int:
-                if depth == 1 || new_child.balanced
-                | (1 bits.(<<) (depth * SHIFT_INC)) - radix_of(index, depth - 1)
-                | (new_child.sizes :~ Array.of(Int))[new_child.size - 1]
-              def new_len = node.size - branch_index    
-              def step = 1 bits.(<<) (depth * SHIFT_INC)
-              def new_sizes = Array.make(new_len)
-              
-              for (i: 0 .. new_sizes.length()):
-                new_sizes[i] := (size0 + i * step)
-                
-              Node(unsafe.freeze_vec(new_children),
-                   unsafe.freeze_vec(new_sizes))
-          | ~else:
-              def (branch_index, subindex) = step(node, index, depth)
-              def new_children :~ Array.of(Node) = vec_drop(node.children, branch_index)
-              def new_sizes = for Array:
-                each i: branch_index .. (node.sizes :~ Array.of(Int)).length()
-                (node.sizes :~ Array.of(Int))[i] - index 
-              def new_child = drop(node.get(branch_index), subindex, depth - 1)
-                
-              new_children[0] := new_child  
-              Node(unsafe.freeze_vec(new_children),
-                   unsafe.freeze_vec(new_sizes))
-
-        def t :~ CVec:
-          recur squash(node :~ Node = new_root, new_height = height):
-            if node.size == 1 && new_height > 0
-            | squash(node.first, new_height - 1)
-            | CVec(node, size - pos, new_height, dummy_node)
-
-        // TODO explain
-        if t.height > 1 && t.root.sizes
-        | def sizes = set_vec(t.root.sizes, t.root.size - 1, t.size)
-          CVec(Node(t.root.children, sizes), t.size, t.height, dummy_node) 
-        | t
-
-// TODO use :~
-  private method pushdown_tail(node :: Node, t :: Array, size, height, cc) :: CVec:
-    if height == 1
-    | #void
-    | #void
-          
+    Catvec(new_node, size, height)
 
   // add `el` to end of vector
-  method add(el) :~ CVec:
-    if tail.length() != MAX_WIDTH
-    | CVec(root, size + 1, height, add_vec(tail, el))
-    | def count = copyable_count(root, height)
+  method add(el) :: Catvec:
+    if size == 0
+    | Catvec(leaf(el), 1, 0)
+    |
+      def count = copyable_count(root, height)
       if count == 0
       | /* not enough space in original tree */
-        CVec(Node(vec(
-                   new_branch_node(root, tail, height), size + 1, height + 1,
-                   root.sizes && vec(size - tail.length(), tail.length()))),
-             size + 1,
-             height + 1,
-             vec(el))
+        Catvec(Node(cow(root, new_branch(el, height)),
+                    root.sizes && cow(size, size + 1)),
+               size + 1,
+               height + 1)
       | /* enough space in original tree */
-        pushdown_tail(root, tail, size, height, count)
-
-  macro 'construct($args, ...)':
-    'for values(t = CVec[]):
-      each:
-        el: (($args, ...) :~ Array)
-      t.add(el)'
-    
-  export:
-    construct
-
+        Catvec(build(root, count, height, el),
+               size + 1,
+               height)
     
 
-// TODO chunk adding here by 32 and add whole nodes at a time?
-  method add_all(els :~ Sequence) :~ CVec:
-    #//
-    for values(t = CVec[]):
-      each el: els
-      def a = for Array:
-        each i: 0 .. 32
-        el
-        
-      t.add_node(unsafe.freeze_vec(a), a.length())
-      
-        
-    
+  // TODO chunk adding here by 32 and add whole nodes at a time?
+  method add_all(els :: Sequence) :: Catvec:
     for values(t = this):
       each:
         el: els
       t.add(el)
 
-  method add_node(node, sz) :~ CVec:
-    def count = copyable_count(root, height)
-    if count == 0
-    | CVec(Node(vec(root, node),
-                root.sizes && vec(size, size + sz)),
-           size + sz,
-           height + 1,
-           dummy_node)
-    | CVec(build_node(root, count, height, node, sz),
-           size + sz,
-           height, dummy_node)
-
-  // TODO can't annotate multiple return values ?
-  method split(at :~ NonnegInt):/*~ (Vec, CVec)*/
+  // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
+  // rather than traverse once per element of represented vector
+  method to_list() :: List:
+    for List:
+      each idx: 0..size
+      get(idx)
+      
+  // trees that are a result of this method may not meet invariants, but rebalancing is costly
+  // and future concatenations would restore the invariants due to rebalancing being done on concats.
+  // TODO write some tests showing this
+  method take(pos :: NonnegInt) :: Catvec:
     cond
-    | at == 0: values(CVec[], this)
-    | at == size: values(this, CVec[])
+    | pos < 0 || pos > size:
+        error(#'Catvec_take, "index out of range")
+    | pos == 0:
+        Catvec[]
+    | pos == size:
+        this
+    | ~else:
+        def new_root = recur take(node :: Node = root, index = pos - 1, depth = height):
+          cond
+          | depth == 0:
+              Node(cow_take(node.children, radix(index, 0) + 1))
+          | node.balanced:
+              def branch_index = radix(index, depth)
+              def new_children :: Array.of(Node) = vector.take(node.children, branch_index + 1)
+              new_children[branch_index] := take(node.get(branch_index), index, depth - 1)
+              Node(unsafe.freeze(new_children))
+          | ~else:
+              def (branch_index, subindex) = step(node, index, depth)
+              def new_children :: Array.of(Node) = vector.take(node.children, branch_index + 1)
+              def new_sizes :: Array.of(Int)  = vector.take(node.sizes, branch_index + 1)
+              new_children[branch_index] := take(node.get(branch_index), subindex, depth - 1)
+              new_sizes[branch_index] := index + 1
+              Node(unsafe.freeze(new_children),
+                   unsafe.freeze(new_sizes))
+
+        recur squash(node :: Node = new_root, new_height = height):
+          if node.size == 1 && new_height > 0
+          | squash(node.first, new_height - 1)
+          | Catvec(node, pos, new_height)
+        
+
+  method drop(pos :: NonnegInt) :: Catvec:
+    cond
+    | pos < 0 || pos > size:
+        error(#'Catvec_drop, "index out of range")
+    | pos == 0:
+        this
+    | pos == size:
+        Catvec[]
+    | ~else:
+        def new_root = recur drop(node :: Node = root, index :: Int = pos, depth :: Int = height) :: Node:
+          cond
+          | depth == 0:
+              Node(cow_drop(node.children, radix(index, 0)))
+          | node.balanced:
+              def branch_index = radix(index, depth)
+              def new_children :: Array.of(Node) = vector.drop(node.children, branch_index)
+              def new_child :: Node = drop(node.get(branch_index), index, depth - 1)
+              new_children[0] := new_child
+              
+              def size0 :: Int:
+                if depth == 1 || new_child.balanced
+                | (1 bits.(<<) (depth * BITS)) - radix(index, depth - 1)
+                | (new_child.sizes :: Cow.of(Int))[new_child.size - 1]
+              def new_len = node.size - branch_index    
+              def step = 1 bits.(<<) (depth * BITS)
+              def new_sizes = Array.make(new_len)
+              
+              for (i: 0 .. new_sizes.length()):
+                new_sizes[i] := (size0 + i * step)
+                
+              Node(unsafe.freeze(new_children),
+                   unsafe.freeze(new_sizes))
+          | ~else:
+              def (branch_index, subindex) = step(node, index, depth)
+              def new_children :: Array.of(Node) = vector.drop(node.children, branch_index)
+              def new_sizes = for Array:
+                each i: branch_index .. (node.sizes :: Cow.of(Int)).length()
+                (node.sizes :: Cow.of(Int))[i] - index 
+              def new_child = drop(node.get(branch_index), subindex, depth - 1)
+                
+              new_children[0] := new_child  
+              Node(unsafe.freeze(new_children),
+                   unsafe.freeze(new_sizes))
+
+        def t :: Catvec:
+          recur squash(node :: Node = new_root, new_height = height):
+            if node.size == 1 && new_height > 0
+            | squash(node.first, new_height - 1)
+            | Catvec(node, size - pos, new_height)
+
+        // TODO explain
+        if t.height > 1 && t.root.sizes
+        | def sizes = cow_set(t.root.sizes, t.root.size - 1, t.size)
+          Catvec(Node(t.root.children, sizes), t.size, t.height) 
+        | t
+
+
+  // :( can't annotate multiple return values on methods
+  method split(at :: NonnegInt): // :: (Catvec, Catvec):
+    cond
+    | at == 0: values(Catvec[], this)
+    | at == size: values(this, Catvec[])
     | at > 0 && at < size: values(take(at), drop(at))
     | ~else: error(#'split, "invalid index")
     
 
-  private override method append(rhs :~ CVec):
+  private override method append(rhs :: Catvec) :: Catvec:
     concat(rhs)
     
-  method concat(rhs :~ CVec) :~ CVec:
+  method concat(rhs :: Catvec) :: Catvec:
     cond
     | size == 0: rhs
     | rhs.size == 0: this
@@ -329,31 +298,32 @@ class CVec(root :~ Node,
                          #true),
           size + rhs.size)
 
-  method insert(at :~ NonnegInt, el) :~ CVec:
+  method insert(at :: NonnegInt, el) :: Catvec:
     cond
     | at <= 0:
-        CVec[].add(el).concat(this)
+        Catvec[].add(el).concat(this)
     | at >= size - 1:
         this.add(el)
     | ~else:
-        let (l :~ CVec, r :~ CVec) = split(at)
+        let (l :: Catvec, r :: Catvec) = split(at)
         l.add(el).concat(r)
 
-  // TODO shoudl be able to make this faster. At the least, we can grab whole leaf nodes at a time 
-  // rather than traverse once per element of represented vector
-  method to_list() :~ List:
-    for List:
-      each idx: 0..size
-      get(idx)
 
 
 
+/* helper functions */
 
-fun concat_subtree(left :~ Node,
-                   height_l :~ Int,
-                   right :~ Node,
-                   height_r :~ Int,
-                   top :~ Boolean) :~ Node:
+fun
+| from() :: Catvec: Catvec[]
+| from(s :: Sequence) :: Catvec:
+    for values(v = Catvec[]) (el: s):
+      v.add(el)
+
+fun concat_subtree(left :: Node,
+                   height_l :: Int,
+                   right :: Node,
+                   height_r :: Int,
+                   top :: Boolean) :: Node:
   cond
   /* only trees of the same height can be concatenated */
   | height_l > height_r:
@@ -378,8 +348,8 @@ fun concat_subtree(left :~ Node,
                 top)
   | height_l == 0:
       if top && left.size + right.size <= MAX_WIDTH
-      | Node(append_vec(left.children, right.children))
-      | set_sizes(vec(left, right), 1)
+      | Node(cow_append(left.children, right.children))
+      | set_sizes(cow(left, right), 1)
   | ~else:
       /* two internal nodes with same height */
       rebalance(left,
@@ -392,43 +362,43 @@ fun concat_subtree(left :~ Node,
                 height_l,
                 top)
 
-fun rebalance(left :~ maybe(Node),
-              center :~ Node,
-              right :~ maybe(Node),
-              height :~ Int,
-              top :~ Boolean) :~ Node:
+fun rebalance(left :: maybe(Node),
+              center :: Node,
+              right :: maybe(Node),
+              height :: Int,
+              top :: Boolean) :: Node:
   def all_slots = merge_nodes(left, center, right)
   def plan = concat_plan(all_slots)
   def rebalanced_slots = exec_concat_plan(all_slots, plan, height)
 
   cond
   | rebalanced_slots.length() <= MAX_WIDTH && !top:
-      Node(vec(set_sizes(unsafe.freeze_vec(rebalanced_slots), height)))
+      Node(cow(set_sizes(unsafe.freeze(rebalanced_slots), height)))
   | rebalanced_slots.length() <= MAX_WIDTH:
-      set_sizes(unsafe.freeze_vec(rebalanced_slots), height)
+      set_sizes(unsafe.freeze(rebalanced_slots), height)
   | ~else:
-      def (new_left :~ Array, new_right :~ Array) = vec_split(rebalanced_slots, MAX_WIDTH)
-      set_sizes(vec(set_sizes(unsafe.freeze_vec(new_left), height),
-                    set_sizes(unsafe.freeze_vec(new_right), height)),
+      def (new_left :: Array, new_right :: Array) = vector.split(rebalanced_slots, MAX_WIDTH)
+      set_sizes(cow(set_sizes(unsafe.freeze(new_left), height),
+                    set_sizes(unsafe.freeze(new_right), height)),
                 height + 1)
                    
 
 /* merge all children except for the rightmost in `left` and leftmost in `right` */
-fun merge_nodes(left :~ Node/*:~ maybe(Node)*/, center :~ Node, right :~ Node/* :~ maybe(Node)*/) :~ Array:
-  array_append(if !left || left.size == 0 | vec() | vec_drop_right(left.children, 1),
-               center.children,
-               if !right || right.size == 0 | vec() | vec_drop(right.children, 1))
+fun merge_nodes(left :: maybe(Node), center :: Node, right :: maybe(Node)) :: Array:
+  vector.concat(if !left || Node.size(left) == 0 | cow() | vector.drop_right(Node.children(left), 1),
+                center.children,
+                if !right || Node.size(right) == 0 | cow() | vector.drop_right(Node.children(right), 1))
 
 // TODO how to avoid setting sizes when the tree is leftwise dense?
-fun set_sizes(children :~ Array, height :~ Int) :~ Node:
+fun set_sizes(children :: Array, height :: Int) :: Node:
   if height == 0
   | Node(children)
   | // TODO do this more efficiently
     def (sizes, _):
-      for values(sizes = vec(), sum = 0):
+      for values(sizes = cow(), sum = 0):
         each i: 0 .. children.length()
         def child_size =  size_subtree(children[i], height - 1)
-        values(add_vec(sizes, sum + child_size),
+        values(cow_add(sizes, sum + child_size),
                sum + child_size)
              
 
@@ -437,13 +407,13 @@ fun set_sizes(children :~ Array, height :~ Int) :~ Node:
 
 // TODO redesign this to be less imperative?
 /* receives a node that is temporarily allowed to have > max_width children, redistributes it to conform to invariant */
-fun concat_plan(slots :~ Array.of(Node)) :~ maybe(Array):
+fun concat_plan(slots :: Array.of(Node)) :: maybe(Array):
   def plan = Array.make(slots.length())
   def child_count:
     for values(count = 0):
       each i: 0 .. slots.length()
               
-      plan[i] := (slots[i] :~ Node).size
+      plan[i] := (slots[i] :: Node).size
       count + plan[i]
 
   def optimal_node_len = math.ceiling(child_count / MAX_WIDTH)
@@ -453,9 +423,9 @@ fun concat_plan(slots :~ Array.of(Node)) :~ maybe(Array):
   | #false
   | distribute(plan.copy(), target_node_len, plan.length())
              
-fun distribute(plan :~ Array, target :~ Int, count :~ Int, node_idx :~ Int = 0) :~ Array:
+fun distribute(plan :: Array, target :: Int, count :: Int, node_idx :: Int = 0) :: Array:
   if target >= count:
-  | vec_take(plan, count)
+  | vector.take(plan, count)
   | let i = short_node(plan, node_idx)
     let (i, r):
       // TODO better way to do this?
@@ -474,22 +444,32 @@ fun distribute(plan :~ Array, target :~ Int, count :~ Int, node_idx :~ Int = 0) 
 
     distribute(plan, target, count - 1, i - 1)
 
-
-fun short_node(plan :~ Array, i :~ Int) :~ Int:
+#//
+fun node_for(v :: Catvec, idx :: Int) :: (Node, Int):
+  recur  node_for(node :: Node = v.root, idx :: Int = idx, height :: Int = v.height):
+    cond
+    | height == 0: values(node, idx)
+    | node.balanced: node_for(node.get(radix(idx, height)), idx, height - 1)
+    | ~else: def (bi, si) = step(node, idx, height)
+             node_for(node.get(bi), si, height - 1)
+           
+fun short_node(plan :: Array, i :: Int) :: Int:
   if plan[i] < MAX_WIDTH - 1
   | i
   | short_node(plan, i + 1)
 
 
-fun exec_concat_plan(slots :~ Array.of(Node),
-                     plan :~ Array /* :~ maybe(Array)*/,
-                     height :~ Int) :~ Array:
+fun exec_concat_plan(slots :: Array.of(Node),
+                     plan :: maybe(Array),
+                     height :: Int) :: Array:
   if !plan
   | slots
-  | def flattened:
+  | /* TODO really should be able to infer this */
+    let plan :: Array = plan
+    def flattened:
       for Array:
-        each node :~ Node: slots
-        each child :~ Node: node.children
+        each node :: Node: slots
+        each child :: Node: node.children
         child
         
     def new_slots = Array.make(plan.length())
@@ -501,7 +481,7 @@ fun exec_concat_plan(slots :~ Array.of(Node),
         for Array:
           each j: sum .. new_sum
           flattened[j]
-      new_slots[i] :=  set_sizes(unsafe.freeze_vec(new_node), height - 1)
+      new_slots[i] :=  set_sizes(unsafe.freeze(new_node), height - 1)
       
       new_sum
              
@@ -510,14 +490,19 @@ fun exec_concat_plan(slots :~ Array.of(Node),
 
 
 // TODO can we calculate this along the way and get rid of this extra traversal?
-fun calc_height_and_wrap(root :~ Node, size :~ Int):
-  def (_, height):
-    for values(node = root, height = 0):
-      each i: 0..
-      break_when !(node is_a Node)
-      values(node.first, i)
+fun calc_height_and_wrap(root :: Node, size :: Int):
+  if root.size == 0
+  | Catvec.EMPTY
+  |
+    def (_, height):
+      for values(node = root, height = 0):
+        each i: 0..
+        break_when !(node is_a Node)
+        values(node.first, i)
     
-  CVec(root, size, height, dummy_node)
+    Catvec(root, size, height)
+
+
 
 /* TODO: is this a bug waiting to happen?
   We're calling this to set sizes and then assuming we can
@@ -525,33 +510,44 @@ fun calc_height_and_wrap(root :~ Node, size :~ Int):
   seems to work except for in case of right-most child of root node,
   which we are currently correcting for in concat
 */
-fun size_subtree(node :~ Node, height :~ Int):
+fun size_subtree(node :: Node, height :: Int):
+  
   cond
   | height == 0:
       node.children.length()
   | node.sizes:
-      node.sizes[node.size - 1]
-  | ~else: // if sizes is #false, then we know we have a leftwise-dense subtree TODO: do we though?
-      ((node.size - 1) bits.(<<) (height * SHIFT_INC)) + size_subtree(node.last, height - 1)
-      
+      (node.sizes :: Cow)[node.size - 1]
+  | ~else:
+      for values(sum = 0):
+        each i: node.children
+        sum + size_subtree(node.children[i], height - 1)
+      #//
+      // if sizes is #false, then we know we have a leftwise-dense subtree TODO: do we though?
+      ((node.size - 1) bits.(<<) (height * BITS)) + size_subtree(node.last, height - 1)
+
+  #//
+  match [height, node.sizes]
+  | [0, _]: node.children.length()
+  | [_, sizes :: Cow]: sizes[node.size - 1]
+  | [h, #false]: // if sizes is #false, then we know we have a leftwise-dense subtree TODO: do we though?
+      ((node.size - 1) bits.(<<) (h * BITS)) + size_subtree(node.last, h - 1)
+  | ~else: internal_error: "size_subtree"
 
 /* helper functions */
-      
-fun radix_of(index :~ Int, height :~ Int) :~ Int:
-  (index bits.(>>) (SHIFT_INC * height)) bits.and SHIFT_MASK
                       
-fun scan_sizes(sizes :~ Array, target_index, i = 0) :~ Int:
+fun scan_sizes(sizes :: Cow, target_index, i = 0) :: Int:
   if sizes[i] <= target_index
   | scan_sizes(sizes, target_index, i + 1)
   | i
 
 // calculate next branch to take and subindex of `index` along that path
-fun step(node :~ Node, index, depth) :~ (NonnegInt, NonnegInt):
-  def branch = scan_sizes(node.sizes, index, radix_of(index, depth))
+fun step(node :: Node, index, depth) :: (NonnegInt, NonnegInt):
+  let sizes :: Cow = node.sizes
+  def branch = scan_sizes(sizes, index, radix(index, depth))
   values(branch,
          if branch == 0
          | index
-         | index - node.sizes[branch - 1])
+         | index - sizes[branch - 1])
 
 // count number of nodes that either have room themselves for another element and/or branch,
 // or one of their right-most descendents has room
@@ -559,7 +555,7 @@ fun step(node :~ Node, index, depth) :~ (NonnegInt, NonnegInt):
 // TODO very large trees (larger than 32^3) tend to go OOM in this function.
 // is there a more efficient way tod o this? Perhaps just assume there's room in the tree
 // and check properties of the generated new_root to see if that's correct or not?
-fun copyable_count(node :~ Node, height):
+fun copyable_count(node :: Node, height):
   def (_, count):
     for values(n = node, count = 0):
       each i: 0 .. height + 1
@@ -575,97 +571,274 @@ fun copyable_count(node :~ Node, height):
 
 //  using `count` returned from `copyable_count`, copy `count` nodes along right-most path of `n`,
 // then insert new element in leaf node or new branch if `count` << `height`
-fun build(n :~ Node, count, height, el):
+fun build(n :: Node, count, height, el):
   if count < 2
   | if height == 0
-    | Node(add_vec(n.children, el))
-    | Node(add_vec(n.children,
+    | Node(cow_add(n.children, el))
+    | Node(cow_add(n.children,
                    new_branch(el, height - 1)))
-  | Node(set_vec(n.children,
+  | Node(cow_set(n.children,
                  n.size - 1,
                  build(n.get(n.size - 1),
                        count - 1,
                        height - 1,
                        el)),
-         n.sizes && set_vec(n.sizes,
-                            n.sizes.length() - 1,
-                            n.sizes[n.sizes.length() - 1] + 1))
+         n.sizes && block:
+           let sizes :: Cow = n.sizes
+           cow_set(sizes,
+                   sizes.length() - 1,
+                   sizes[sizes.length() - 1] + 1))
 
-//  using `count` returned from `copyable_count`, copy `count` nodes along right-most path of `n`,
-// then insert new node
-fun build_node(n :~ Node, count, height, node, sz):
-  if count < 2
-  | if height == 0
-    | Node(node)
-    | Node(add_vec(n.children, node))
-  | Node(set_vec(n.children,
-                 n.size - 1,
-                 build_node(n.get(n.size - 1),
-                            count - 1,
-                            height - 1,
-                            node,
-                            sz)),
-         n.sizes && set_vec(n.sizes,
-                            n.sizes.length() - 1,
-                            n.sizes[n.sizes.length() - 1] + sz))
-  #//
-  if count < 2
-  | if height == 0
-    | Node(add_vec(n.children, el))
-    | Node(add_vec(n.children,
-                   new_branch(el, height - 1)))
-  | Node(set_vec(n.children,
-                 n.size - 1,
-                 build(n.get(n.size - 1),
-                       count - 1,
-                       height - 1,
-                       el)),
-         n.sizes && set_vec(n.sizes,
-                            n.sizes.length() - 1,
-                            n.sizes[n.sizes.length() - 1] + 1))
 
 // create a branch of height `height` terminating in a unary leaf node containing `el`
 fun new_branch(el, height):
   if height == 0
   | leaf(el)
-  | Node(vec(new_branch(el, height - 1)))
+  | Node(cow(new_branch(el, height - 1)))
+                   
+module test:
+  /* Node tests */ 
+  let leaf_n :: Node = Node(cow(1, 2, 3, 4))
+  let internal_balanced_n :: Node = Node(cow(Node(Cow.from(0..32)),
+                                             Node(Cow.from(32..64)),
+                                             Node(Cow.from(64..96))))
+  let internal_unbalanced_n :: Node = Node(cow(Node(Cow.from(0..32)),
+                                               Node(Cow.from(32..60)),
+                                               Node(Cow.from(60..90))),
+                                           cow(32, 60, 90))
 
-// TODO
-fun new_branch_node(node :~ Node, t :~ Array, height):
-  // wrong
-  if height == 0
-  | Node(node, t)
-  | Node(vec(new_branch_node(node, t, height - 1)))
 
-fun calc_height(v :~ CVec):
-    bits.length(math.max(0,
-                         v.size /* TODO add when tail optimzation done- v.tail.length() */
-                           - MAX_WIDTH)) div SHIFT_INC
+  check: // equatable
+    leaf_n ~is Node(cow(1, 2, 3, 4))
+    leaf_n ~is Node(cow(1, 2, 3, 4), cow(1, 2, 3)) // sizes arr here is bogus but ignored for equality    
+    internal_balanced_n  ~is Node(internal_balanced_n.children, cow(1, 2, 3))
+    internal_unbalanced_n ~is Node(internal_unbalanced_n.children)
+    internal_unbalanced_n ~is Node(internal_unbalanced_n.children)
 
 
-// TODO use what we know about CVec invariants and size of `from`
-// to construct the vector in a smarter fashion
-fun mk_vec(from :~ List) :~ CVec:
-  fun calc_height(size :~ Int, tail_len :~ Int):
-      bits.length(math.max(0,
-                           size - tail_len /* TODO add when tail optimzation done- v.tail.length() */
-                             - MAX_WIDTH)) div SHIFT_INC
+  check: //balanced
+    leaf_n.balanced ~is #true
+    internal_balanced_n.balanced ~is !internal_unbalanced_n.balanced
+         
+  check: //size
+    leaf_n.size ~is 4
+    internal_balanced_n.size ~is 3
+    internal_unbalanced_n.size ~is 3
 
-  if from.length() <= 32
-  | CVec(Node(),
-         from.length(),
-         calc_height(from.length(), from.length() mod 32),
-         unsafe.freeze_vec(for Array:
-                             each el: from
-                             el))
-  | recur go(l :~ List = from, acc :~ Array = vec(), node :~ Array = vec(), h = 0):
-      match l
-      | []:  CVec(Node(acc), from.length(), calc_height(from.length(), from.length() mod 32), node)
-      | List.cons(el, rst):
-          cond
-          | node.length() == MAX_WIDTH
-              && acc.length() == MAX_WIDTH:
-                go(rst, vec(Node(acc), new_branch(el, h)), vec(), h + 1)
-          | node.length() == MAX_WIDTH:
-              go(rst, add_vec(acc, Node(node)), vec(), h)
-          | ~else: go(rst, acc, add_vec(node, el), h)
+  check: //first
+    leaf_n.first ~is 1
+    internal_balanced_n.first ~is Node(Cow.from(0..32))
+    internal_unbalanced_n.first ~is Node(Cow.from(0..32))
+
+  check: //last
+    leaf_n.last ~is 4
+    internal_balanced_n.last ~is Node(Cow.from(64..96))
+    internal_unbalanced_n.last ~is Node(Cow.from(60..90))
+
+  check: // get
+    leaf_n.get(0) ~is leaf_n[0]
+    leaf_n[3] ~is 4
+    internal_balanced_n.get(0) ~is internal_balanced_n[0]
+    internal_balanced_n.get(1) ~is Node(Cow.from(32..64))
+    internal_unbalanced_n.get(0) ~is internal_unbalanced_n[0]
+    internal_unbalanced_n.get(1) ~is Node(Cow.from(32 .. 60))
+
+  check: // set
+    leaf_n.set(0, -1) ~is Node(cow(-1, 2, 3, 4))
+    internal_balanced_n.set(0, -1).set(1, -1).set(2, -1) ~is Node(cow(-1, -1, -1))
+    internal_unbalanced_n.set(0, -1).set(1, -1).set(2, -1) ~is Node(cow(-1, -1, -1))
+
+  check: // hash_code just for coverage really
+    {leaf_n: 0}[Node(cow(1,2,3,4), cow(9,9,99,99))] ~is 0
+    {Node(): -1}[Node(cow(), cow())] ~is -1
+
+  check: // leaf macro
+    leaf(1, 2, 3, 4) ~is leaf_n
+    leaf(leaf(1, 2, 3, 4), leaf(5, 6)) ~is Node(cow(leaf(1,2,3,4),
+                                                    leaf(5,6)))
+
+
+  /* ---------- Catvec ----------
+    class Catvec(root :: Node,
+             size :: NonnegInt,
+             height :: NonnegInt):
+  implements Indexable
+  private implements Equatable
+  private implements Appendable */
+
+  // expressions
+  check: Catvec(Node(), 0, 0) ~is Catvec[]
+         Catvec(leaf(1), 1, 0) ~is Catvec[1]
+         Catvec(leaf(1, 2), 2, 0) ~is Catvec[1, 2]
+         Catvec(leaf(1, 2, 3), 3, 0) ~is Catvec[1, 2, 3]
+         Catvec(leaf(1, 2, 3, 4), 4, 0) ~is Catvec[1, 2, 3, 4]
+         Catvec(leaf(1, 2, 3, 4, 5), 5, 0) ~is Catvec[1, 2, 3, 4, 5]
+         Catvec(leaf(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20), 20, 0) ~is Catvec[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20]
+
+
+  // start with testing some balanced vecs
+
+  let empty :: Catvec = Catvec[]
+  let small :: Catvec = Catvec[1, 2, 3, 4, 5]
+//  let small_unbalanced :: Catvec = Catvec[1, 2, 3] ++ Catvec[4, 5, 6]
+  let medium :: Catvec = Catvec[].add_all(List.iota(1024))
+  let large :: Catvec = Catvec[].add_all(List.iota(MAX_WIDTH ** 4 + 1))
+//  let large_unbalanced :: Catvec = Catvec[].add_all(List.iota(500)) ++ Catvec[].add_all(List.iota(200))
+//  let small_very_unbalanced :: Catvec = (((Catvec[1] ++ Catvec[2] :: Catvec) ++ Catvec[3]) :: Catvec) ++ Catvec[4]
+
+
+  check: // get near beginning
+    empty.get(0) ~raises ""
+    small.get(0) ~is 1
+    medium.get(0) ~is 0
+ //   large.get(0) ~is 0
+//    large_unbalanced.get(0) ~is 0
+//    small_very_unbalanced.get(0) ~is 1
+
+  check: // get in the middle
+    empty.get(1) ~raises ""
+    small.get(1) ~is 2
+    medium.get(500) ~is 500
+//    large.get((MAX_WIDTH ** 4) div 2) ~is (MAX_WIDTH ** 4) div 2
+//    large_unbalanced.get(330) ~is 330
+//    small_very_unbalanced.get(1) ~is 2
+
+
+  check: // get at the end
+    empty.get(10000000) ~raises ""
+    small.get(4) ~is 5
+    medium.get(1023) ~is 1023
+//    large.get(MAX_WIDTH ** 4) ~is MAX_WIDTH ** 4
+//    large_unbalanced.get(699) ~is 199 
+//    small_very_unbalanced.get(3) ~is 4
+
+
+// add
+
+  check: // add
+    empty.add(1) ~is Catvec[1]
+    small.add(1) ~is Catvec[1, 2, 3, 4, 5, 1]
+    medium.add(1).to_list() ~is List.iota(1024) ++ [1]
+//    large.add(1).get(large.size) ~is 1
+
+  //set
+  check: // set near beginning
+    empty.set(0, -1) ~raises ""
+    small.set(0, -1) ~is Catvec[-1, 2, 3, 4, 5]
+    medium.set(0, -1).get(0) ~is -1
+//    large.set(0, -1).get(0) ~is -1
+
+  check: // set in the middle
+    empty.set(1, -1) ~raises ""
+    small.set(1, -1) ~is Catvec[1, -1, 3, 4, 5]
+    medium.set(500, -1).get(500) ~is -1
+//    large.set((MAX_WIDTH ** 4) div 2, -1).get((MAX_WIDTH ** 4) div 2) ~is -1
+    
+  check: // set at the end
+    empty.set(100000, -1) ~raises ""
+    small.set(4, -1) ~is Catvec[1, 2, 3, 4, -1]
+    medium.set(1023, -1).get(1023) ~is -1
+//    large.set(MAX_WIDTH ** 4, -1).get(MAX_WIDTH ** 4) ~is -1
+
+
+  // take
+
+  check: // take 0
+    empty.take(0) ~is Catvec[]
+    small.take(0) ~is Catvec[]
+    medium.take(0) ~is Catvec[]
+//    large.take(0) ~is Catvec[]
+
+  check: // take size
+    empty.take(empty.size) ~is Catvec[]
+    small.take(small.size) ~is small
+    medium.take(medium.size) ~is medium
+//    large.take(large.size) ~is large
+
+  check: // take small
+    empty.take(1) ~raises ""
+    small.take(1) ~is Catvec[1]
+    medium.take(1) ~is Catvec[0]
+//    large.take(1) ~is Catvec[0]
+
+  check: // take medium
+    empty.take(10) ~raises ""
+    small.take(2) ~is Catvec[1, 2]
+    medium.take(10) ~is Catvec[0, 1, 2, 3, 4, 5, 6, 7, 8, 9]
+//    large.take(100).to_list() ~is List.iota(100)
+
+  check: // take large
+    empty.take(10000).to_list() ~raises ""
+    small.take(4).to_list() ~is [1, 2, 3, 4]
+    medium.take(1000).to_list() ~is List.iota(1000)
+//    large.take(10000).to_list() ~is List.iota(10000)
+
+  check: // take error
+    small.take(100) ~raises ""
+    medium.take(1000000000) ~raises ""
+//    large.take(10000000000000000000000000000000000000000000000000000000000) ~raises ""
+
+// TODO drop is broken because unbalanced is borken in general i think
+    /*
+  // drop
+  check: // drop 0
+    empty.drop(0) ~is empty
+    small.drop(0) ~is small
+    medium.drop(0) ~is medium
+    large.drop(0) ~is large
+
+  check: // drop size
+    empty.drop(0) ~is Catvec[]
+    small.drop(small.size) ~is Catvec[]
+    medium.drop(medium.size) ~is Catvec[]
+    large.drop(large.size) ~is Catvec[]
+
+  check: // drop small
+    empty.drop(1) ~raises ""
+    small.drop(1) ~is Catvec[2, 3, 4, 5]
+    medium.drop(1).to_list() ~is List.iota(medium.size).rest
+    large.drop(1).to_list() ~is List.iota(large.size).rest
+
+  check: // drop medium
+    empty.drop(10) ~raises ""
+    small.drop(2) ~is Catvec[3, 4, 5]
+    medium.drop(10).to_list() ~is Function.map(fun (x): x + 10, List.iota(medium.size - 10))
+    large.drop(100).to_list() ~is List.iota(100)
+
+  check: // drop large
+    empty.drop(10000).to_list() ~raises ""
+    small.drop(4).to_list() ~is [5]
+    medium.drop(1000).take(1000).to_list() ~is Function.map(fun (x): x + 1000, List.iota(1000))
+    large.drop(10000).take(10000).to_list() ~is Function.map(fun (x): x + 10000, List.iota(10000))
+
+  check: // drop error
+    small.drop(-1) ~raises ""
+    medium.drop(-1000000000) ~raises ""
+    large.drop(-10000000000000000000000000000000000000000000000000000000000) ~raises ""
+*/
+
+// append
+  check: // append identity
+    (empty ++ empty :: Catvec).to_list() ~is (empty.to_list() ++ empty.to_list())
+    (small ++ small :: Catvec).to_list() ~is (small.to_list() ++ small.to_list())
+    (medium ++ medium :: Catvec).to_list() ~is (medium.to_list() ++ medium.to_list())
+//    (large ++ large :: Catvec).to_list() ~is (large.to_list() ++ large.to_list())
+    // etc
+
+
+  /* unbalanced guys */
+
+  let small :: Catvec = Catvec(Node(cow(Node(Cow.from(0..10)),
+                                        Node(Cow.from(0..32))),
+                                    cow(10, 42)),
+                               42, 1)
+
+  for (i: 0 .. 10):
+    check: small[i] ~is i
+  for (i: 10 .. 42):
+    check: small[i] ~is i - 10
+
+// TODO i really shouldn't hagve to annotate here :(
+  let small :: Catvec = Catvec[1] ++ Catvec[2] ++ Catvec[3]
+  check:
+    small ~is Catvec[1, 2, 3]
