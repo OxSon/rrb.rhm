@@ -2,3 +2,5 @@
 scratch.rhm
 /compiled/
 *~
+.DS_Store
+.vscode/
