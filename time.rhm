@@ -9,6 +9,7 @@ import:
   rhombus/measure
   "utils.rhm" open
   "cow_array.rhm" open
+  rhombus/runtime
 
 class TimeBenchmark(cpu, real, gc, ~exn = #false):
   private implements Printable
@@ -221,6 +222,8 @@ fun bench_construct(sizes_to_use :: List.of(Int), iters_to_use :: Int):
                actions[ops.construct][typ](sz),
            [size])
       ~catch exn:
+        println("ERROR w/ ctor: ")
+        println(exn)
         TimeBenchmark(~exn: exn)
     [ops.construct, typ, result.cpu, result.real, result.gc, size, iters_to_use]
 
@@ -229,29 +232,38 @@ fun do_bench(operation :: Int, sizes_to_use :: List.of(Int), iters_to_use :: Int
   for List:
     each size: sizes_to_use
     each typ: types.members
+    runtime.gc()
     let result :~ TimeBenchmark = try:
       time(fun (t):
              for (_: 0 .. iters_to_use):
                actions[operation][typ](t),
            [actions[ops.construct][typ](size)])
-      ~catch exn:
-        TimeBenchmark(~exn: exn)
+      ~catch _:
+        try: // try one more time in case it was a fluke
+          time(fun (t):
+                 for (_: 0 .. iters_to_use):
+                   actions[operation][typ](t),
+               [actions[ops.construct][typ](size)])
+          ~catch exn:
+            TimeBenchmark(~exn: exn)
     [operation, typ, result.cpu, result.real, result.gc, size, iters_to_use]
 
 // TODO: benchmark getting/setting repeatedly to show advantages of cache coherency?
 
 fun record(name :: String, bench :: List.of(List)):
-  let o = r.#{open-output-file}("benchmarks/bench_" +& name +& ".csv", ~exists: #'replace)
-  // headers
-  println("operation, structure type, cpu, real, gc, size, iterations", o)
-  // data
-  for (row : bench):
-    print(row[0], o)
-    for (val: row.rest):
-      print(", " +& val, o)
-    println("", o)
+  println("benching " +& name +& "...")
+  if_not name == "control":
+    let o = r.#{open-output-file}("benchmarks/" +& name +& ".csv", ~exists: #'replace)
+    // headers (note no spaces between header names or they'll end up in the header name literally)
+    println("operation,structure type,cpu,real,gc,size,iterations", o)
+    // data
+    for (row : bench):
+      print(row[0], o)
+      for (val: row.rest):
+        print(", " +& val, o)
+      println("", o)
 
-  r.#{close-output-port}(o)
+    r.#{close-output-port}(o)
   println("record done: " +& name)
 
 record("control", do_bench(ops.control, sizes, long_iters))
