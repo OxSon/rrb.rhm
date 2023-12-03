@@ -169,6 +169,10 @@ class Vector(root :: Node = Node(),
   | 'Vector($root, $size, $height, $tail)': ' _V($root, $size, $height, $tail) :: Vector'
 */
   
+
+  method length():
+    size
+    
   private override equals(rhs :: Vector, recur):
     size == rhs.size
       && recur(tail, rhs.tail)

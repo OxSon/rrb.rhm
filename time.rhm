@@ -1,100 +1,208 @@
-#lang racket
+#lang rhombus/static/and_meta
 
-import "rrbtree.rhm" open
-import "rbtree.rhm"
-import rhombus/measure
-import lib("racket/base.rkt") as rkt:
-  expose: #{time-apply}
-  rename: #{time-apply} as rkt_time
-import lib("racket/vector.rkt") as vec
+import:
+  lib("racket/base.rkt") as rkt:
+    expose: #{time-apply}
+    rename: #{time-apply} as rkt_time
+  "rrbtree.rhm": expose Catvec
+  "rbtree.rhm": expose Vector
+  rhombus/measure
+  "utils.rhm" open
+  "cow_array.rhm" open
 
-/* TODO compare against
-      - racket vectors
-      - hash tables mapping indices to values
-      - cons lists
-
-   we care about small trees, time doing X operation multiple times (100 times)? not just once
-
-  make sure to time:
-      - constructors
-      - 
-
-  goals: 10s or 100s of milliseconds
-*/
-class TimeBenchmark(~cpu, ~real, ~gc):
+class TimeBenchmark(cpu, real, gc, ~exn = #false):
   private implements Printable
+
+  constructor
+  | (): super(#nan, #nan, #nan, #true)
+  | (cpu, real, gc): super(cpu, real, gc)
+  | (~exn): super(#nan, #nan, #nan, ~exn: exn)
 
   private override describe(mode, recur):
     "~cpu: " +& cpu +& ", ~real: " +& real +& ", ~gc: " +& gc
+
+  method serialize():
+    [cpu, real, gc]
   
 
 fun time(f, args) :~ TimeBenchmark:
   let (_, cpu, real, gc) = rkt_time(f, args)
-  TimeBenchmark(~cpu: cpu, ~real: real, ~gc: gc)
+  TimeBenchmark(cpu, real, gc)
 
-macro 'times($f, $objs)':
-  'for Map:
-     each obj: $objs
-     values(sizeof(obj), time($f, [obj]))'
 
-macro 'bench ($name = $obj):
-         ~times: $iterations
-         $exp':
-  'time(fun ($name):
-          for (i: 0 .. $iterations):
-            $exp,
-        [$obj])'
+interface AList:
+  extends Indexable // .get and [] access
+  extends Sequenceable // .to_sequence
+  extends Appendable // ++ and .append
 
-class Timings(~list,
-              ~rrb,
-              ~rb,
-              ~hash,
-              ~rkt_vec,
-              ~control,
-              ~op,
-              ~size,
-              ~iters)
+ // def EMPTY :: AList
 
-macro 'bench_for $op times $iters with name $name and size $sz:
-         $_list: $_list_exp
-         $_rrb: $_rrb_exp
-         $_rb: $_rb_exp
-         $_hash: $_hash_exp
-         $_rkt_vec: $_rkt_vec_exp':
-  'bench ($name = $_rrb):
-     ~times: $iters
-     $_rrb_exp'
-  #//
-  'block:
-     let (lst, rrb, rb, hsh, rkt_vec, control):
-       values(
-         bench ($name = $_list):
-           ~times: $iters
-           $_list_exp,
-         bench ($name = $_rrb):
-           ~times: $iters
-           $_rrb_exp,
-         bench ($name = $_rb):
-           ~times: $iters
-           $_rb_exp,
-         bench ($name = $_hash):
-           ~times: $iters
-           $_hash_exp,
-         bench ($name = $_rkt_vec):
-           ~times: $iters
-           $_rkt_vec_exp,
-         bench ($name = #false):
-           ~times: $iters
-           #void)
-     Timings(~list: lst,
-             ~rrb: rrb,
-             ~rb: rb,
-             ~hash: hsh,
-             ~rkt_vec: rkt_vec,
-             ~op: $op,
-             ~iters: $iters,
-             ~size: $sz,
-             ~control: control)'
+  method length() :: Int
+  method set(index :: Int, el) :: AList
+  method cons(el) :: AList
+  method snoc(el) :: AList
+  method add(el) :: AList
+  method pop() :: AList
+  method take(pos :: Int) :: AList
+  method drop(pos :: Int) :: AList
+  method sublist(start :: Int, end :: Int) :: AList
+
+
+defn.macro 'enum $name:
+                $(id :: Group)
+                ...':
+    def [n, ...] = List.iota([id, ...].length())
+    'namespace $name:
+       export all_defined
+
+       def members: [$n, ...]
+       def $id: $n
+       ...'
+
+/* sequence operations */
+enum ops:
+  construct
+  cons
+  snoc
+  add
+  get
+  set
+  pop
+  take
+  drop
+  concat
+  sublist
+  control
+
+/* known sequence types that could satisfy List annot */
+enum types:
+  list
+  catvec
+  rbvec
+  map
+  cow
+
+def actions :: Map.of(Int, Map.of(Int, Function)) = {
+  ops.construct: { types.list:
+                     fun (t :~ Int): List.iota(t),
+                   types.catvec:
+                     fun (t :~ Int): Catvec.from(0..t),
+                   types.rbvec:
+                     fun (t :~ Int): Vector.from(0..t),
+                   types.map:
+                     fun (t :~ Int):
+                       for Map:
+                         each i: 0 .. t
+                         values(i, i),
+                   types.cow:
+                     fun (t :~ Int): Cow.from(0..t)},
+  ops.cons: { types.list:
+                fun (t :~ List): List.cons(-1, t),
+              types.catvec:
+                fun(t :~ Catvec): t.insert(0, -1),
+              types.rbvec:
+                fun (t :~ Vector): Vector().add(-1) ++ t,
+              types.map:
+                fun (t :~ Map):
+                  {0: -1} ++ for Map:
+                    each (k, v): t
+                    values(k + 1, v),
+              types.cow:
+                fun (t :~ Cow): cow_append(cow(-1), t)},
+  ops.snoc: { types.list:
+                fun (t :~ List): t ++ [-1],
+              types.catvec:
+                fun (t :~ Catvec): t.add(-1),
+              types.rbvec:
+                fun (t :~ Vector): t.add(-1),
+              types.map:
+                fun (t :~ Map): t ++ {t.length(): -1},
+              types.cow:
+                fun (t :~ Cow): cow_add(t, -1)},
+  ops.add: { types.list: fun (t :~ List): List.cons(-1, t),
+             types.catvec: fun (t :~ Catvec): t.add(-1),
+             types.rbvec:  fun (t :~ Vector): t.add(-1),
+             types.map: fun (t :~ Map): t ++ {t.length(): -1},
+             types.cow: fun (t :~ Cow): cow_add(t, -1)},
+  ops.get: { types.list: fun (t :~ List): t[t.length() div 2],
+             types.catvec: fun (t :~ Catvec): t[t.length() div 2],
+             types.rbvec: fun (t :~ Vector): t[t.length() div 2],
+             types.map: fun (t :~ Map): t[t.length() div 2],
+             types.cow: fun (t :~ Cow): t[t.length() div 2]},
+  ops.set: { types.list:
+               fun (t :~ List):
+                 let idx = t.length() div 2
+                 t.drop_right(t.length() - idx) ++ List.cons(-1, t.drop_left(idx + 1)),
+             types.catvec:
+               fun (t :~ Catvec): t.set(t.size div 2, -1),
+             types.rbvec:
+               fun (t :~ Vector):
+                 let idx = t.length() div 2
+                 t.take(idx - 1).add(-1) ++ t.drop(idx + 1),
+             types.map:
+               fun (t :~ Map): for Map:
+                                 each:
+                                   i: 0 .. t.length()
+                                   (k, v): t
+                                 if i == t.length() div 2
+                                 | values(k, -1)
+                                 | values(k, v),
+             types.cow:
+               fun (t :~ Cow): cow_set(t, t.length() div 2, -1)},
+  ops.pop: { types.list: fun (t :~ List): t.drop_right(1),
+             types.catvec: fun (t :~ Catvec): t.pop(),
+             types.rbvec: fun (t :~ Vector): t.pop(),
+             types.map: fun (t :~ Map): Map.remove(t, t.length() - 1),
+             types.cow: fun (t :~ Cow): cow_take(t, t.length() - 1)},
+  ops.take: { types.list: fun (t :~ List): t.drop_right(t.length() div 2 + 1),
+              types.catvec: fun (t :~ Catvec): t.take(t.size div 2 - 1),
+              types.rbvec: fun (t :~ Vector): t.take(t.size div 2 - 1),
+              types.map: fun (t :~ Map):
+                           for Map:
+                             each:
+                               (k, v): t
+                               i: 0..(t.length() div 2) - 1
+                             values(k, v),
+              types.cow: fun (t :~ Cow):
+                           cow_take(t, t.length() div 2 - 1)},
+  ops.drop: { types.list: fun (t :~ List):
+                            t.drop_left(t.length() div 2),
+              types.catvec: fun (t :~ Catvec):
+                              t.drop(t.size div 2),
+              types.rbvec: fun (t :~ Vector):
+                             t.drop(t.size div 2),
+              types.map: fun (t :~ Map):
+                           for Map (i: (t.length() div 2) .. t.length()):
+                             values(i, t[i]),
+              types.cow: fun (t :~ Cow):
+                           cow_drop(t, t.length() div 2)},
+  ops.concat: { types.list: fun (t :~ List): t ++ t,
+                types.catvec: fun (t :~ Catvec): t ++ t,
+                types.rbvec: fun (t :~ Vector): t ++ t,
+                types.map: fun (t :~ Map): t ++ t,
+                types.cow: fun (t :~ Cow):
+                             cow_append(t, t)},
+  ops.sublist: { // we'll do the middle third of the sequence i suppose
+                 types.list: fun (t :~ List):
+                               if t.length() < 10
+                               | []
+                               | t.drop_right(t.length() div 3).drop_left(t.length() div 3),
+                 types.catvec: fun (t :~ Catvec):
+                                 t.sublist(t.size div 3, t.size div 3),
+                 types.rbvec:
+                   fun (t :~ Vector):
+                     t.drop(t.size div 3).take(t.length() - (t.length() div 3)),
+                 types.map: fun (t :~ Map):
+                              for Map (i: (t.length() div 3)..2*(t.length() div 3)):
+                                values(i, t[i]),
+                 types.cow: fun (t :~ Cow):
+                              cow_take(t, t.length() - t.length())},
+  ops.control: { types.list: id,
+                 types.catvec: id,
+                 types.rbvec: id,
+                 types.map: id,
+                 types.cow: id}}
+
 
 def small_sizes = [1, 5, 10, 50, 100, 300, 500]
 def sizes = [1, 5, 10, 50, 100, 300, 500, 1000, 10000]
@@ -102,99 +210,60 @@ def short_iters = 1000
 def iters = 10000
 def long_iters = 1000000
 
-def small_ctor_times:
-  for Map:
-    each sz: small_sizes
-    values(sz,
-           bench_for "ctor" times iters with name t and size sz:
-             #void: List.iota(sz)
-             #void: Vec().add_all(List.iota(sz))
-             #void: rbtree.Vector.from(0..sz)
-             #void: for Map (i: 0 .. sz):
-                      values(i, i)
-             #void: for Array ~length sz (i: 0 .. sz):
-                      i
-           )
+fun bench_construct(sizes_to_use :: List.of(Int), iters_to_use :: Int):
+  // TODO gc before each?
+  for List:
+    each size: sizes_to_use
+    each typ: types.members
+    let result :~ TimeBenchmark = try:
+      time(fun (sz):
+             for (_: 0 .. iters_to_use):
+               actions[ops.construct][typ](sz),
+           [size])
+      ~catch exn:
+        TimeBenchmark(~exn: exn)
+    [ops.construct, typ, result.cpu, result.real, result.gc, size, iters_to_use]
 
-def ctor_times:
-  for Map:
-    each sz: sizes
-    values(sz,
-           bench_for "ctor" times short_iters with name t and size sz:
-             #void: List.iota(sz)
-             #void: Vec().add_all(List.iota(sz))
-             #void: rbtree.Vector.from(0..sz)
-             #void: for Map (i: 0 .. sz):
-                      values(i, i)
-             #void: for Array ~length sz (i: 0 .. sz):
-                      i
-           )
+fun do_bench(operation :: Int, sizes_to_use :: List.of(Int), iters_to_use :: Int):
+  // TODO gc before each?
+  for List:
+    each size: sizes_to_use
+    each typ: types.members
+    let result :~ TimeBenchmark = try:
+      time(fun (t):
+             for (_: 0 .. iters_to_use):
+               actions[operation][typ](t),
+           [actions[ops.construct][typ](size)])
+      ~catch exn:
+        TimeBenchmark(~exn: exn)
+    [operation, typ, result.cpu, result.real, result.gc, size, iters_to_use]
 
-def snoc_times:
-  for Map:
-    each sz: sizes
-    values(sz,
-           bench_for "snoc" times iters with name t and size sz:
-             (List.iota(sz)): t.append(["foo"])
-             (Vec().add_all(List.iota(sz))): t.add("foo")
-             (rbtree.Vector.from(0..sz)): t.add("foo")
-             (for Map (i: 0..sz): values(i, i)): t ++ { sz: "foo" }
-             (rkt.#{list->vector}(List.iota(sz))): vec.#{vector-append}(t, rkt.vector("foo"))
-           )
+// TODO: benchmark getting/setting repeatedly to show advantages of cache coherency?
 
-def cons_times:
-  for Map:
-    each sz: sizes
-    values(sz,
-           bench_for "cons" times short_iters with name t and size sz:
-             (List.iota(sz)): List.cons("foo", t)
-             (Vec().add_all(List.iota(sz))): t.insert(0, "foo")
-             (rbtree.Vector.from(0..sz)): for values(v = rbtree.Vector().add("foo")):
-                                            each i: 0..sz
-                                            v.add(t.get(i))
-             (for Map (i: 0..sz): values(i, i)): (for Map:
-                                                    each (k, v): t
-                                                    values(k+1, v)) ++ { 0: "foo" }
-             (rkt.#{list->vector}(List.iota(sz))): vec.#{vector-append}(rkt.vector("foo"), t)
-           )
+fun record(name :: String, bench :: List.of(List)):
+  let o = r.#{open-output-file}("benchmarks/bench_" +& name +& ".csv", ~exists: #'replace)
+  // headers
+  println("operation, structure type, cpu, real, gc, size, iterations", o)
+  // data
+  for (row : bench):
+    print(row[0], o)
+    for (val: row.rest):
+      print(", " +& val, o)
+    println("", o)
 
-def add_times:
-  for Map:
-    each sz: sizes
-    values(sz,
-           bench_for "add" times long_iters with name t and size sz:
-             (List.iota(sz)): List.cons("foo", t)
-             (Vec().add_all(List.iota(sz))): t.add("foo")
-             (rbtree.Vector.from(0..sz)): t.add("foo")
-             (for Map (i: 0..sz): values(i, i)): t ++ { sz: "foo" }
-             (rkt.#{list->vector}(List.iota(sz))): vec.#{vector-append}(t, rkt.vector("foo"))
-           )
+  r.#{close-output-port}(o)
+  println("record done: " +& name)
 
-def concat_times:
-  for Map:
-    each sz: sizes
-    values(sz,
-           bench_for "++" times short_iters with name t and size sz:
-             (List.iota(sz)): t ++ t
-             (Vec().add_all(List.iota(sz))): t ++ t
-             (rbtree.Vector.from(0..sz)): for values(v = t):
-                                            each i: 0..sz
-                                            v.add(t.get(i))
-             (for Map (i: 0..sz): values(i, i)): for values(new_t = t):
-                                                    each (k, v): t
-                                                    new_t ++ { k+sz: v }
-             (rkt.#{list->vector}(List.iota(sz))): t ++ t
-           )
-
-"small_ctor"
-small_ctor_times
-"ctor"
-ctor_times
-"snoc"
-snoc_times
-"cons"
-cons_times
-"add"
-add_times
-"concat"
-concat_times
+record("control", do_bench(ops.control, sizes, long_iters))
+record("small_ctor", bench_construct(small_sizes, iters))
+record("ctor", bench_construct(sizes, short_iters))
+record("cons", do_bench(ops.cons, sizes, short_iters))
+record("snoc", do_bench(ops.snoc, sizes, iters))
+record("add", do_bench(ops.add, sizes, long_iters))
+record("concat", do_bench(ops.concat, sizes, short_iters))
+record("get", do_bench(ops.get, sizes, iters))
+record("set", do_bench(ops.set, sizes, iters))
+record("pop", do_bench(ops.pop, sizes, iters))
+record("take", do_bench(ops.take, sizes, iters))
+record("drop", do_bench(ops.drop, sizes, iters))
+record("sublist", do_bench(ops.sublist, sizes, iters))

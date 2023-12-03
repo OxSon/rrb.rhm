@@ -1,15 +1,9 @@
 #lang rhombus/static/and_meta
 
-import rhombus:
-  rename:
-    :: as :::
-    
-  expose :::
-  
-// comment out during dev process for extra checks
-
+// comment out for fast
+#//
 import:
-  rhombus.(:~) as ::
+  rhombus.(::) as :~
 
 
 /* Array utilities for imitating COW immutable indexed sequences */
@@ -46,21 +40,21 @@ annot.macro
                               sis)
 
 macro 'cow($el, ...)':
-  '(r_cow.cow($el, ...) :: Cow)'
+  '(r_cow.cow($el, ...) :~ Cow)'
 
-def EMPTY_COW :: Cow = cow()
+def EMPTY_COW :~ Cow = cow()
   
 namespace Cow: 
   fun
-  | from() :: Cow:
+  | from() :~ Cow:
       r_cow.cow()
-  | from(a ::: Array) :: Cow:
+  | from(a :: Array) :~ Cow:
       unsafe.freeze(a.copy())
-  | from(l ::: List) :: Cow:
+  | from(l :: List) :~ Cow:
       unsafe.freeze(r_cow.#{list->vector}(l))
-  | from(s ::: Sequence) :: Cow:
+  | from(s :: Sequence) :~ Cow:
       unsafe.freeze(for Array (si: s): si)
-  | from(_) :: Cow:
+  | from(_) :~ Cow:
       error(#'Cow_from, "unknown argument")
 
   
@@ -70,7 +64,7 @@ namespace Cow:
     annot_meta.pack_predicate('fun (node): ($pred)(node) && frozen(node)', sis)
 
   
-  def EMPTY :: Cow = EMPTY_COW
+  def EMPTY :~ Cow = EMPTY_COW
 
   export:
     from
@@ -89,50 +83,50 @@ module test:
 
 
 
-fun cow_lst(arr :: Array) :: List:
+fun cow_lst(arr :~ Array) :~ List:
   import lib("racket/base.rkt") as r
   r_cow.#{vector->list}(arr)
   
-fun cow_map(f :: Function.of_arity(1), arr :: Array) :: Cow:
+fun cow_map(f :~ Function.of_arity(1), arr :~ Cow) :~ Cow:
   unsafe.freeze(vector.map(f, arr))
   
-fun cow_set(arr :: Array, idx, el) :: Cow:
+fun cow_set(arr :~ Cow, idx, el) :~ Cow:
   let ret = Array.copy(arr)
   ret[idx] := el
   unsafe.freeze(ret)
     
-fun cow_add(arr :: Array, el) :: Cow:
+fun cow_add(arr :~ Cow, el) :~ Cow:
   let ret = Array.make(arr.length() + 1)
   Array.copy_from(ret, 0, arr)
   ret[arr.length()] := el
   unsafe.freeze(ret)
     
-fun cow_drop(arr :: Array, pos) :: Cow:
+fun cow_drop(arr :~ Cow, pos) :~ Cow:
    cond
    | pos < 0 || pos > arr.length(): error(#'cow_drop, "index out of range")
    | pos == 0: arr
    | pos == arr.length(): Cow.EMPTY
    | ~else: unsafe.freeze(vector.drop(arr, pos))
 
-fun cow_drop_right(arr :: Array, pos) :: Cow:
+fun cow_drop_right(arr :~ Cow, pos) :~ Cow:
   cond
   | pos < 0 || pos > arr.length(): error(#'cow_drop_right, "index out of range")
   | pos == 0: Cow.EMPTY
   | pos == arr.length(): arr
   | ~else: unsafe.freeze(vector.drop_right(arr, pos))
 
-fun cow_split(arr :: Array, pos) :~ values(Cow, Cow):
+fun cow_split(arr :~ Cow, pos) :~ values(Cow, Cow):
   cond
   | pos == 0:
       values(Cow.EMPTY, arr)
   | pos == arr.length():
       values(arr, Cow.EMPTY)
   | pos > 0 && pos < arr.length():
-      values(vector.take(arr, pos),
-             vector.drop(arr, pos))
+      values(unsafe.freeze(vector.take(arr, pos)),
+             unsafe.freeze(vector.drop(arr, pos)))
   | ~else: error(#'cow_split, "index out of range")
 
-fun cow_take(arr :: Array, pos) :: Cow:
+fun cow_take(arr :~ Cow, pos) :~ Cow:
   cond
   | pos < 0 || pos > arr.length(): error(#'cow_take, "index out of range: " +& pos +& ", " +& arr)
   | pos == 0: Cow.EMPTY
@@ -140,15 +134,15 @@ fun cow_take(arr :: Array, pos) :: Cow:
   | ~else: unsafe.freeze(vector.take(arr, pos))
 
 fun
-| cow_append(l :: Array, r :: Array) :: Cow:
+| cow_append(l :~ Cow, r :~ Cow) :~ Cow:
     unsafe.freeze(l ++ r)
-| cow_append(l :: Array, c :: Array, r :: Array) :: Cow:
+| cow_append(l :~ Cow, c :~ Cow, r :~ Cow) :~ Cow:
     unsafe.freeze(l ++ c ++ r)
 
-fun cow_copy(arr :: Array) :: Cow:
+fun cow_copy(arr :~ Cow) :~ Cow:
   unsafe.freeze(arr.copy())
 
-fun cow_copy_mut(arr :: Array) :: Array:
+fun cow_copy_mut(arr :~ Cow) :~ Array:
   arr.copy()
 
 
@@ -156,19 +150,19 @@ fun cow_copy_mut(arr :: Array) :: Array:
 namespace unsafe: 
   import lib("racket/unsafe/ops.rkt") as unsafe
 
-  fun freeze(v :: Array) :: Cow:
+  fun freeze(v :~ Array) :~ Cow:
     unsafe.#{unsafe-vector*->immutable-vector!}(v)
       
   export freeze
 
 module test:
-  check: Array(1, 2, 3) ::: Cow
+  check: Array(1, 2, 3) :: Cow
          ~raises ""
          
-  check: 3 ::: Cow
+  check: 3 :: Cow
          ~raises ""
          
-  check: cow(1, 2, 3) ::: Cow
+  check: cow(1, 2, 3) :: Cow
          ~completes
 
   check: cow_add(cow(1, 2, 3), 4)
