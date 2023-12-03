@@ -190,6 +190,9 @@ class Vector(root :: Node = Node(),
     | size == 0: rhs
     | rhs.size == 0: this
     | ~else:
+        for values(v = this) (i: 0 .. rhs.size):
+          v.add(rhs.get(i))
+        #//
         recur f(i = 0, v :: Vector = this, arr :: Cow = array_for(0)):
           cond
           | i >= rhs.size:
