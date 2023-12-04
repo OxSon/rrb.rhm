@@ -265,7 +265,6 @@ fun record(name :: String, bench :: List.of(List)):
     r.#{close-output-port}(o)
   println("record done: " +& name)
 
-/*
 record("control", do_bench(ops.control, sizes, long_iters))
 record("small_ctor", bench_construct(small_sizes, iters))
 record("ctor", bench_construct(sizes, short_iters))
@@ -279,5 +278,5 @@ record("pop", do_bench(ops.pop, sizes, iters))
 record("take", do_bench(ops.take, sizes, iters))
 record("drop", do_bench(ops.drop, sizes, iters))
 record("sublist", do_bench(ops.sublist, sizes, iters))
-*/
-record("set", do_bench(ops.set, sizes, iters))
+
+// now benchmarking against interface?
