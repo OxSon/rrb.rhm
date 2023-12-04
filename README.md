@@ -12,7 +12,7 @@ This project is a work in progress (as is this README).
 - `raco test .`
 
 ## Bench
-- [Install python](https://www.python.org/downloads/)a
+- [Install python](https://www.python.org/downloads/)
 - `pip install -r requirements.txt`
 - `racket time.rhm`
 - `python benchmarks/graph_bench.py`
