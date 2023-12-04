@@ -62,7 +62,7 @@ defn.macro 'enum $name:
 
 /* sequence operations */
 enum ops:
-  construct
+  construct // 0
   cons
   snoc
   add
@@ -138,8 +138,7 @@ def actions :: Map.of(Int, Map.of(Int, Function)) = {
                fun (t :~ Catvec): t.set(t.size div 2, -1),
              types.rbvec:
                fun (t :~ Vector):
-                 let idx = t.length() div 2
-                 t.take(idx - 1).add(-1) ++ t.drop(idx + 1),
+                 t.set(t.size div 2, -1),
              types.map:
                fun (t :~ Map): for Map:
                                  each:
@@ -156,8 +155,8 @@ def actions :: Map.of(Int, Map.of(Int, Function)) = {
              types.map: fun (t :~ Map): Map.remove(t, t.length() - 1),
              types.cow: fun (t :~ Cow): cow_take(t, t.length() - 1)},
   ops.take: { types.list: fun (t :~ List): t.drop_right(t.length() div 2 + 1),
-              types.catvec: fun (t :~ Catvec): t.take(t.size div 2 - 1),
-              types.rbvec: fun (t :~ Vector): t.take(t.size div 2 - 1),
+              types.catvec: fun (t :~ Catvec): t.take(math.max(t.size div 2 - 1, t.size)),
+              types.rbvec: fun (t :~ Vector): t.take(math.max(t.size div 2 - 1, t.size)),
               types.map: fun (t :~ Map):
                            for Map:
                              each:
@@ -165,7 +164,7 @@ def actions :: Map.of(Int, Map.of(Int, Function)) = {
                                i: 0..(t.length() div 2) - 1
                              values(k, v),
               types.cow: fun (t :~ Cow):
-                           cow_take(t, t.length() div 2 - 1)},
+                           cow_take(t, math.max(t.length() div 2 - 1, t.length()))},
   ops.drop: { types.list: fun (t :~ List):
                             t.drop_left(t.length() div 2),
               types.catvec: fun (t :~ Catvec):
@@ -260,12 +259,13 @@ fun record(name :: String, bench :: List.of(List)):
     for (row : bench):
       print(row[0], o)
       for (val: row.rest):
-        print(", " +& val, o)
+        print(", " +& if val == #nan | "" | val, o)
       println("", o)
 
     r.#{close-output-port}(o)
   println("record done: " +& name)
 
+/*
 record("control", do_bench(ops.control, sizes, long_iters))
 record("small_ctor", bench_construct(small_sizes, iters))
 record("ctor", bench_construct(sizes, short_iters))
@@ -279,3 +279,5 @@ record("pop", do_bench(ops.pop, sizes, iters))
 record("take", do_bench(ops.take, sizes, iters))
 record("drop", do_bench(ops.drop, sizes, iters))
 record("sublist", do_bench(ops.sublist, sizes, iters))
+*/
+record("set", do_bench(ops.set, sizes, iters))
