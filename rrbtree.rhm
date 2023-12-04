@@ -8,6 +8,14 @@ import "cow_array.rhm" open
 #//
 import:
   rhombus.(::) as :~
+
+
+/*
+  (Rough) Roadmap:
+  - tail
+  - make rrbtree construction smarter
+  - largescale real world use (shplait?)
+*/
   
   
 export:
@@ -43,6 +51,7 @@ class Node(children :~ Cow.of(Node || Any) = cow(), sizes :~ maybe(Cow.of(Int)) 
   - unbalanced nodes contain a size array `sizes`, balanced nodes do not
 */
   private implements Equatable
+  private implements Sequenceable
   implements Indexable
 
   constructor
@@ -89,12 +98,34 @@ class Node(children :~ Cow.of(Node || Any) = cow(), sizes :~ maybe(Cow.of(Int)) 
     | for values(hc = recur(children[0])):
         each i: 1 .. children.length()
         Equatable.hash_code_combine(hc, recur(children[i]))
+
+  private override to_sequence():
+    Sequence.make(~initial_position: 0,
+                  ~continue_at_position: fun (i): i < this.size,
+                  ~position_to_element: fun (i): this[i],
+                  ~position_to_next: fun (i): i + 1)
+
+
+  sequence '$lhs: $rhs':
+    '(~outer_binds:
+        p :~ Node = $rhs,
+      ~recur_binds:
+        pos = 0,
+      ~head_guard:
+        pos < p.size,
+      ~inner_binds:
+        $lhs = p[pos],
+      ~recur_args:
+        (pos + 1))'
     
   override get(index):
     children[index]
 
   method set(index, el) :~ Node:
     Node(cow_set(children, index, el), sizes)
+
+  method length() :~ Int:
+    children.length()
 
 
 
@@ -109,37 +140,9 @@ class Catvec(root :~ Node,
   implements Indexable
   private implements Equatable
   private implements Appendable
-  private implements Sequenceable
+  implements Sequenceable
 
-  // todo cache leaf nodes?
-  private override to_sequence():
-    Sequence.make(~initial_position: 0,
-                  ~continue_at_position: fun (i): i < this.size,
-                  ~position_to_element: fun (i): this[i],
-                  ~position_to_next: fun (i): i + 1)
 
-/*
-    cant get this to work , keep getting this error
-```
-../../Library/Racket/8.11/pkgs/rhombus-prototype/rhombus/private/static-info.rkt:60:28:
-    quasisyntax: misuse within quasisyntax in:
-    (unsyntax-splicing (syntax-local-value (quote-syntax Catvec-statinfo)))
-```
-    
-  // todo cache leaf nodes?
-  sequence '$lhs: $rhs':
-    '(~outer_binds:
-        p = $rhs,
-      ~recur_binds:
-        pos = 0,
-      ~head_guard:
-        pos < size,
-      ~inner_binds:
-        $lhs = (p :~ Catvec)[pos],
-      ~recur_args:
-        (pos + 1))'
-*/
-  
   internal _CatVec
 
   expression
@@ -151,13 +154,44 @@ class Catvec(root :~ Node,
   | 'Catvec()': '_CatVec(Node(), 0, 0, cow()) :~ Catvec'
   | 'Catvec($root, $size, $height)': '_CatVec($root, $size, $height) :~ Catvec'
 
-  
 
   macro 'EMPTY': 'Catvec[]'
   export:
     EMPTY
     from
+
+  override to_sequence():
+    Sequence.instantiable(
+      fun():
+        if size == 0
+        | []
+        | def (mutable node :~ Node, mutable subidx :~ Int) = node_for(0)
+          Sequence.instantiate(~initial_position: 0,
+                               ~continue_at_position: fun (pos): pos < size,
+                               ~position_to_element: fun (pos): if radix(pos, 0) < node.size
+                                                                | node[radix(pos, 0)]
+                                                                | let (_node, _subidx) = node_for(pos)
+                                                                  node := _node
+                                                                  subidx := _subidx
+                                                                  node[radix(subidx, 0)],
+                               ~position_to_next: fun (pos): pos + 1)
+    )
+
+/*
   
+  sequence '$lhs: $rhs':
+    '(~outer_binds:
+        p :~ Catvec = $rhs,
+      ~recur_binds:
+        pos = 0,
+      ~head_guard:
+        pos < p.size,
+      ~inner_binds:
+        $lhs = p[pos],
+      ~recur_args:
+        (pos + 1))'
+  */
+    
   property balanced:
     root.balanced
 
@@ -166,21 +200,36 @@ class Catvec(root :~ Node,
   private override equals(rhs :~ Catvec, recur):
     size == rhs.size && for values(eq = #true):
       each i: 0..size
-      eq && recur(rhs[i], this[i])  //recur(root, rhs.root)
+      eq && recur(rhs[i], this[i])
 
   private override hash_code(recur):
     recur(root)
-
+    
   override get(index :~ Int):
-    //let (node, subidx) = node_for(this, index)
-   // node[subidx bits.and MASK]
-    recur get(node :~ Node = root, index = index, depth = height):
-      if node.balanced
-      | for values(n = node):
-          each i: List.iota(depth + 1).reverse()
-          n.get(radix(index, i))
-      | def (branch_index, subindex) = step(node, index, depth)
-        get(node.get(branch_index), subindex, depth - 1)
+    let (node :~ Node, subidx :~ Int) = node_for(index)
+    node[subidx bits.and MASK]
+
+/* TODO private */
+  method node_for(index :~ NonnegInt): // :: values(Node, Int)
+    cond
+    | size == 0 || index < 0 || index >= size:
+        error(#'Catvec_internal, "index out of range")
+    | height == 0:
+        values(root, index)
+    | ~else:
+        recur walk(node :~ Node = root, index = index, depth = height):
+          cond
+          | node.balanced:
+              values(for values(n = node):
+                       each i: List.iota(depth + 1).rest.reverse()
+                       n.get(radix(index, i)),
+                     index)
+          | depth == 1:
+              let (bi, si) = step(node, index, depth)
+              values(node[bi], si)
+          | ~else:
+              let (bi, si) = step(node, index, depth)
+              walk(node.get(bi), si, depth - 1)
       
     
   // functionally update the slot at `index` to `el`
@@ -381,6 +430,7 @@ class Catvec(root :~ Node,
         drop(start).take(end - start)
 
 
+
 /* helper functions */
 
 fun concat_subtree(left :~ Node,
@@ -524,15 +574,6 @@ fun distribute(plan :~ Array, target :~ Int, count :~ Int, node_idx :~ Int = 0) 
 
     distribute(plan, target, count - 1, i - 1)
 
-
-#//
-fun node_for(v :~ Catvec, idx :~ Int) :~ (Node, Int):
-  recur  node_for(node :~ Node = v.root, idx :~ Int = idx, height :~ Int = v.height):
-    cond
-    | height == 0: values(node, idx)
-    | node.balanced: node_for(node.get(radix(idx, height)), idx, height - 1)
-    | ~else: def (bi, si) = step(node, idx, height)
-             node_for(node.get(bi), si, height - 1)
            
 fun short_node(plan :~ Array, i :~ Int) :~ Int:
   if plan[i] < MAX_WIDTH - 1
