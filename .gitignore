@@ -4,3 +4,5 @@ scratch.rhm
 *~
 .DS_Store
 .vscode/
+benchmarks/*.csv
+benchmarks/*.png
