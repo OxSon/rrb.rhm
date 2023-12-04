@@ -7,4 +7,3 @@ scratch.rhm
 benchmarks/*.csv
 benchmarks/*.png
 tmp/
-*.tar.gz
