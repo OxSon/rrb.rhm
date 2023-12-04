@@ -33,13 +33,10 @@ for file in csv_files:
         structure_type = structure_types[group[1]]
         
         # Calculate the average time result (cpu, real, gc)
-        """
         try:
             avg_time = data[['cpu', 'real', 'gc']].mean(axis=1)
-        except: 
-            avg_time =  np.inf
-        """
-        avg_time = data['cpu']
+        except:
+            avg_time = np.array([np.inf] * len(data))
         
         # Plot size against average time result with labeled lines
         plt.plot(data['size'], avg_time, label=structure_type)
