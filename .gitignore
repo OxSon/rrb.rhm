@@ -6,3 +6,5 @@ scratch.rhm
 .vscode/
 benchmarks/*.csv
 benchmarks/*.png
+tmp/
+*.tar.gz
